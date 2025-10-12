@@ -2,136 +2,151 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Star Glide</title>
 <meta name="theme-color" content="#0a0f17">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root { color-scheme: light dark; }
-  html,body{height:100%;margin:0;background:#07090d;color:#fff;font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif}
-  .wrap{height:100%;display:grid;grid-template-rows:1fr}
-  #game{display:block;width:100%;height:100%;background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14)}
+  /* Reset & iOS-friendly fullscreen */
+  html, body { margin:0; padding:0; height:100%; background:#07090d; color:#eaf2ff; font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif; }
+  body {
+    overflow:hidden;                 /* no scroll */
+    overscroll-behavior:none;
+    touch-action:none;               /* prevent swipe/scroll gestures */
+    -webkit-user-select:none;
+    -webkit-touch-callout:none;
+  }
+  /* The stage is fixed to the visible viewport and respects the notch */
+  .stage {
+    position:fixed;
+    inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    width:100vw;
+    height:100svh;                   /* iOS 16+ visible viewport units */
+    display:block;
+    background:transparent;
+  }
+  /* Fallback: JS will also force exact px height via visualViewport */
+  #game {
+    display:block;
+    width:100%;
+    height:100%;
+    background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14);
+    touch-action:none;
+  }
+
   .hud{
-    position:absolute; inset:12px 12px auto auto;
-    padding:6px 10px; border-radius:10px; font-weight:800; letter-spacing:.06em;
-    color:#fff; background:rgba(0,0,0,.15); backdrop-filter: blur(3px);
-    display:flex; align-items:center; gap:10px;
+    position:absolute; right:12px; top:12px;
+    background:rgba(255,255,255,.06); padding:6px 10px;
+    border-radius:10px; font-weight:800; letter-spacing:.06em
   }
-  .hud .shieldIcon{
-    width:18px;height:22px; display:inline-block;
-    filter: drop-shadow(0 0 4px rgba(91,244,255,.4));
-  }
-  .hud .shieldIcon.inactive{ opacity:.2; filter:none }
-  .center{position:absolute; inset:0; display:grid; place-items:center; text-align:center; padding:0 10px}
-  .controls{position:absolute; left:12px; top:12px; opacity:.6; font-weight:700; color:#c9d8ff}
-  .btn{
-    pointer-events:auto; cursor:pointer;
-    padding:14px 22px; border-radius:14px; border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421);
-    color:#eaf2ff; font-weight:800; letter-spacing:.06em;
-    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
-    user-select:none; -webkit-tap-highlight-color:transparent;
-    transform: translateY(0); transition: transform .06s ease;
-  }
-  .btn:active{ transform: translateY(1px); }
-  .overlay{
+  .center{
     position:absolute; inset:0; display:grid; place-items:center;
-    background:radial-gradient(1200px 800px at 50% 30%, rgba(53,94,252,.10), transparent 60%);
+    pointer-events:none; font-weight:900; letter-spacing:.08em;
+    color:#9fb7ff66; text-align:center; padding:0 10px
   }
-  .sub{margin-top:10px; color:#9fb7ffb0; font-weight:700}
+  .controls{ position:absolute; left:12px; top:12px; opacity:.6; font-weight:700 }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div style="position:relative;">
+  <!-- Fullscreen stage -->
+  <div class="stage">
     <canvas id="game"></canvas>
-
-    <div class="hud" id="hud">
-      <!-- inline SVG shield icon -->
-      <svg class="shieldIcon inactive" id="shieldIcon" viewBox="0 0 24 24" fill="none" stroke="#7af5ff" stroke-width="2">
-        <path d="M12 2l7 3v6c0 5.25-3.25 9.75-7 11-3.75-1.25-7-5.75-7-11V5l7-3z" fill="rgba(122,245,255,.18)" stroke-linejoin="round"/>
-      </svg>
-      <span id="scoreTxt">0 • HI 0</span>
-    </div>
-
+    <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
-
-    <div class="overlay center" id="startOverlay">
-      <div>
-        <div class="btn" id="startBtn">START</div>
-        <div class="sub">SPACE / TAP to glide</div>
-      </div>
-    </div>
+    <div class="center" id="msg">PRESS SPACE / TAP</div>
   </div>
-</div>
 
 <script>
 (() => {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  const hud = document.getElementById('scoreTxt');
-  const shieldIcon = document.getElementById('shieldIcon');
-  const startOverlay = document.getElementById('startOverlay');
-  const startBtn = document.getElementById('startBtn');
+  const hud = document.getElementById('hud');
+  const msg = document.getElementById('msg');
 
+  /* ==== iPhone landscape sizing: always match the *visible* viewport ==== */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  function resize(){
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    canvas.width = Math.floor(w * DPR);
-    canvas.height = Math.floor(h * DPR);
+
+  function sizeToVisualViewport() {
+    // Prefer visualViewport for iOS Safari chrome/show-hide correctness
+    const vv = window.visualViewport;
+    const w = vv ? Math.floor(vv.width) : window.innerWidth;
+    const h = vv ? Math.floor(vv.height) : window.innerHeight;
+
+    // Set canvas CSS size via style to dodge rounding bugs
+    canvas.style.width  = w + 'px';
+    canvas.style.height = h + 'px';
+
+    // Backing store at DPR
+    const cw = Math.max(1, Math.floor(w * DPR));
+    const ch = Math.max(1, Math.floor(h * DPR));
+    canvas.width = cw;
+    canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
   }
-  new ResizeObserver(()=>{ DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); resize(); }).observe(canvas);
-  resize();
 
-  // --- GAME STATE ---
+  new ResizeObserver(() => {
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    sizeToVisualViewport();
+  }).observe(document.body);
+
+  // React to orientation and the browser UI bar showing/hiding
+  window.addEventListener('orientationchange', () => setTimeout(sizeToVisualViewport, 150), {passive:true});
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => sizeToVisualViewport(), {passive:true});
+  }
+  sizeToVisualViewport();
+
+  // prevent double-tap zoom on iOS
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = now;
+  }, {passive:false});
+
+  // ---- Your original game logic (unchanged except two tiny fixes) ----
+
+  // logo optional
+  const logo = new Image();
+  logo.src = "./assets/logo.png";
+  let logoReady = false;
+  logo.onload = ()=>{ logoReady = true; };
+
   const state = {
     playing: false, dead: false, score: 0, hi: Number(localStorage.getItem('star_glide_hi')||0),
     t: 0, shake: 0, flash: 0,
     gravity: 0.33, thrust: 0.6, maxVy: 9,
     speed: 4.2, gap: 150,
     spawn: 0,
-    minSpawnFrames: 110,
+    minSpawnFrames: 110,  // wider spacing
     maxSpawnFrames: 170,
     maxSlopePxPerFrame: 2.4,
     lastGapY: null,
     lastPipeX: null,
-    pipes: [],
-    particles: [],
-    // orbs are kept as score-bonus pick-ups from your original build
     orbs: [],
-    // SHIELD POWER-UP
-    shields: [],                // floating pickups
-    shieldActive: false,        // do we have a shield right now?
-    shieldInvulnMs: 600,        // brief invulnerability after breaking shield
-    lastShieldBreakAt: -99999,  // timestamp of last break
-    shieldSpawnCooldown: 0,     // frames until we can spawn another
-    shieldMinCooldownFrames: 900, // ensure rarity (≈ 15s at 60fps)
-    shieldChancePerPipe: 0.09   // low probability even when off cooldown
+    pipes: [],
+    particles: []
   };
 
-  const p = { x: 180, y: canvas.clientHeight/2, vy: 0, rot: 0, targetRot: 0, hold: false, w: 54, h: 38 };
+  const p = { x: 180, y: canvas.clientHeight/2, vy: 0, rot: 0, targetRot: 0, hold: false, w: 60, h: 60 };
 
-  // INPUT
-  function startIfNeeded(){ if (!state.playing && !state.dead) start(); }
+  function startIfNeeded(){ if (!state.playing) start(); }
   addEventListener('keydown', e=>{
     if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = true; startIfNeeded(); }
-    if (e.code === 'Enter' && !state.playing) { startIfNeeded(); }
   }, {passive:false});
   addEventListener('keyup', e=>{
     if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = false; if (state.dead) restart(); }
   }, {passive:false});
   canvas.addEventListener('touchstart', e=>{ e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend', e=>{ e.preventDefault(); p.hold = false; if (state.dead) restart(); }, {passive:false});
-  startBtn.addEventListener('click', ()=> startIfNeeded());
 
-  // UTILS
-  const rand = (a,b)=> Math.random()*(b-a)+a;
-  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-  const lerp  = (a,b,t)=> a + (b-a)*t;
+  function rand(a,b){ return Math.random()*(b-a)+a; }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
 
-  // PIPE SPAWN
   function addPipe(){
     const h = canvas.clientHeight;
     const margin = 60;
@@ -159,64 +174,33 @@
     state.lastGapY = gapY;
     state.lastPipeX = canvas.clientWidth + 40;
 
-    // keep some original orbs for extra points
-    if (Math.random()<0.55){
+    if (Math.random()<0.65){
       state.orbs.push({x: canvas.clientWidth + 40 + w/2, y: gapY, r: 8, taken:false});
-    }
-
-    // --- SHIELD PICKUP (infrequent & gated by cooldown) ---
-    if (!state.shieldActive && state.shieldSpawnCooldown<=0 && Math.random() < state.shieldChancePerPipe){
-      const offs = rand(-state.gap*0.35, state.gap*0.35);
-      state.shields.push({
-        x: canvas.clientWidth + 40 + w + rand(40,80),
-        y: gapY + offs,
-        r: 11, taken:false, pulse: rand(0,Math.PI*2)
-      });
-      state.shieldSpawnCooldown = state.shieldMinCooldownFrames;
     }
   }
 
-  // RESET/START/RESTART
   function reset(){
     state.playing = false; state.dead = false; state.score = 0;
     state.speed = 4.2; state.gap = 150; state.gravity = 0.33; state.thrust = 0.6;
-    state.pipes.length = 0; state.orbs.length = 0; state.particles.length = 0; state.shields.length = 0;
+    state.pipes.length = 0; state.orbs.length = 0; state.particles.length = 0;
     state.spawn = 30; state.t = 0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2;
     state.lastPipeX = canvas.clientWidth;
-    state.shieldActive = false; state.shieldSpawnCooldown = 0; state.lastShieldBreakAt = -99999;
     p.x = 180; p.y = canvas.clientHeight/2; p.vy = 0; p.rot = 0; p.targetRot = 0; p.hold = false;
-    startOverlay.style.display = '';
-    setShieldIcon(false);
+    msg.textContent = 'PRESS SPACE / TAP';
   }
-  function start(){ if (state.dead) return; state.playing = true; startOverlay.style.display = 'none'; }
+  function start(){ if (state.dead) return; state.playing = true; msg.textContent = ''; }
   function restart(){ reset(); start(); }
 
-  // PARTICLES (🔥 fire trail)
-  function addFire(){
-    // multiple embers per thrust frame
-    for (let i=0;i<3;i++){
-      const speed = -state.speed*0.6 + Math.random()*-0.6;
-      const huePick = Math.random();
-      // pick warm colors (yellow → orange → red)
-      let color;
-      if (huePick < 0.33) color = 'rgba(255,230,120,';
-      else if (huePick < 0.66) color = 'rgba(255,160,64,';
-      else color = 'rgba(255,96,64,';
-
+  function addParticles(){
+    for (let i=0;i<2;i++){
       state.particles.push({
-        x: p.x - 26 + Math.random()*10,
-        y: p.y + Math.random()*10 - 5,
-        vx: speed + (Math.random()-.5)*0.6,
-        vy: (Math.random()-.5)*1.3,
-        life: rand(18,32),
-        r: rand(2,4),
-        base: color
+        x: p.x - 24 + Math.random()*10, y: p.y + Math.random()*10 - 5,
+        vx: -state.speed*0.6 + Math.random()*-0.8, vy: (Math.random()-.5)*1.2,
+        life: rand(20,34), r: rand(2,4)
       });
     }
   }
-
-  // COLLISIONS
   function hitPipe(pipe){
     const half = state.gap/2;
     if (p.x + p.w*0.35 > pipe.x && p.x - p.w*0.35 < pipe.x + pipe.w){
@@ -226,29 +210,6 @@
   }
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  // SHIELD ICON STATE
-  function setShieldIcon(active){
-    if (active) shieldIcon.classList.remove('inactive');
-    else shieldIcon.classList.add('inactive');
-  }
-
-  // BREAK SHIELD INSTEAD OF DYING
-  function consumeShield(){
-    state.shieldActive = false;
-    state.lastShieldBreakAt = performance.now();
-    setShieldIcon(false);
-    state.shake = Math.max(state.shake, 10);
-    state.flash = 0.5;
-    // burst of shards
-    for (let i=0;i<24;i++){
-      state.particles.push({
-        x:p.x, y:p.y, vx: Math.cos(i/24*2*Math.PI)*rand(1.2,2.6),
-        vy: Math.sin(i/24*2*Math.PI)*rand(1.2,2.6), life: rand(16,28), r: rand(1.5,3.5), base:'rgba(122,245,255,'
-      });
-    }
-  }
-
-  // MAIN LOOP
   let last = performance.now();
   function loop(t){
     const dt = Math.min(32, t - last); last = t;
@@ -260,7 +221,7 @@
     }
 
     if (state.playing && !state.dead){
-      if (p.hold){ p.vy -= state.thrust; addFire(); }
+      if (p.hold){ p.vy -= state.thrust; addParticles(); }
       p.vy += state.gravity;
       p.vy = clamp(p.vy, -9, state.maxVy);
       p.y += p.vy;
@@ -273,33 +234,13 @@
 
       for (const pipe of state.pipes) pipe.x -= state.speed;
       for (const orb of state.orbs)  orb.x  -= state.speed;
-      for (const sh of state.shields) sh.x  -= state.speed;
-      if (state.shieldSpawnCooldown>0) state.shieldSpawnCooldown--;
 
-      // pass pipes & scoring
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
+        if (hitPipe(pipe)) die();
       }
+      if (hitBounds()) die();
 
-      // collisions
-      let collided = false;
-      for (const pipe of state.pipes){
-        if (hitPipe(pipe)) { collided = true; break; }
-      }
-      if (hitBounds()) collided = true;
-
-      if (collided){
-        const sinceBreak = performance.now() - state.lastShieldBreakAt;
-        if (state.shieldActive && sinceBreak > state.shieldInvulnMs){
-          consumeShield();
-          // Nudge player away slightly
-          p.vy = -4; p.y -= 6;
-        } else {
-          die();
-        }
-      }
-
-      // take orbs (bonus points)
       for (const o of state.orbs){
         if (!o.taken){
           const dx = p.x - o.x, dy = p.y - o.y;
@@ -308,36 +249,19 @@
             for (let i=0;i<12;i++){
               state.particles.push({
                 x:o.x, y:o.y, vx: Math.cos(i/12*2*Math.PI)*rand(0.5,2.2),
-                vy: Math.sin(i/12*2*Math.PI)*rand(0.5,2.2), life: rand(14,26), r: rand(1.5,3.5), base:'rgba(200,243,255,'
+                vy: Math.sin(i/12*2*Math.PI)*rand(0.5,2.2), life: rand(14,26), r: rand(1.5,3.5)
               });
             }
           }
         }
       }
 
-      // take shields
-      for (const sh of state.shields){
-        if (!sh.taken){
-          const dx = p.x - sh.x, dy = p.y - sh.y;
-          if (dx*dx + dy*dy < (sh.r + 16)*(sh.r + 16)){
-            sh.taken = true;
-            state.shieldActive = true;
-            setShieldIcon(true);
-            state.shake = Math.max(state.shake, 4);
-          }
-        }
-      }
-
-      // cleanups
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
-      while (state.shields.length && state.shields[0].x + 20 < -40) state.shields.shift();
 
-      // particles update
       for (const prt of state.particles){ prt.x += prt.vx; prt.y += prt.vy; prt.life--; }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
     } else {
-      // idle bob on the start screen
       p.y += Math.sin(state.t/400)*0.3;
       p.rot = Math.sin(state.t/600)*0.1;
     }
@@ -354,19 +278,14 @@
     p.hold = false;
     state.hi = Math.max(state.hi, state.score);
     localStorage.setItem('star_glide_hi', String(state.hi));
-    startOverlay.style.display = '';
-    // change button text to restart hint
-    startBtn.textContent = 'RESTART';
+    msg.textContent = 'GAME OVER — PRESS SPACE / TAP';
   }
 
-  // DRAW
   function draw(){
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    // parallax stars
     ctx.globalAlpha = 0.08;
     for (let i=0;i<60;i++){
       const x = (i*140 - (state.t*0.05)%140);
@@ -379,7 +298,6 @@
     ctx.save();
     ctx.translate(sx, sy);
 
-    // pipes
     for (const pipe of state.pipes){
       const half = state.gap/2;
       const x = pipe.x, w = pipe.w, yTop = 0, hTop = pipe.gapY - half, yBot = pipe.gapY + half, hBot = canvas.clientHeight - yBot;
@@ -391,7 +309,6 @@
       ctx.fillRect(x, yBot, w, 4);
     }
 
-    // orbs
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.15*Math.sin(state.t/120 + o.x*0.02);
@@ -404,98 +321,54 @@
       ctx.stroke();
     }
 
-    // shield pickups
-    for (const sh of state.shields){
-      if (sh.taken) continue;
-      const s = 1 + 0.2*Math.sin(state.t/250 + sh.pulse);
-      ctx.save();
-      ctx.translate(sh.x, sh.y);
-      ctx.scale(s,s);
-      drawShieldIcon(ctx, 0,0, 11, true);
-      ctx.restore();
-    }
-
-    // particles (🔥 additive)
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
     for (const prt of state.particles){
-      const a = Math.max(0, prt.life/28);
-      ctx.fillStyle = prt.base + (a.toFixed(3) + ')');
+      ctx.globalAlpha = Math.max(0, prt.life/26);
+      ctx.fillStyle = "#cfe3ff";
       ctx.beginPath(); ctx.arc(prt.x, prt.y, prt.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
-    ctx.restore();
 
-    // player (simple sleek ship)
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-
-    // ship body
-    const w = p.w, h = p.h;
-    ctx.fillStyle = "#eaf2ff";
-    ctx.strokeStyle = "rgba(255,255,255,.25)";
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-    // a rounded triangle-ish ship
-    ctx.moveTo(-w*0.45, -h*0.4);
-    ctx.quadraticCurveTo(w*0.05, -h*0.6, w*0.5, 0);
-    ctx.quadraticCurveTo(w*0.05,  h*0.6, -w*0.45, h*0.4);
-    ctx.quadraticCurveTo(-w*0.1, 0, -w*0.45, -h*0.4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // cockpit
-    ctx.fillStyle = "#9fb7ff";
-    ctx.beginPath();
-    ctx.ellipse(-w*0.05, 0, 10, 8, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // if shield active, draw a cyan aura
-    if (state.shieldActive){
-      ctx.strokeStyle = "rgba(122,245,255,.65)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.ellipse(0,0, w*0.62, h*0.62, 0, 0, Math.PI*2);
-      ctx.stroke();
+    const sz = 54;
+    if (logoReady){
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.35)";
+      ctx.shadowBlur = 18;
+      roundImage(logo, -sz/2, -sz/2, sz, sz, 10);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = "#6aa0ff"; ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font="bold 12px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("STAR",0,0);
     }
     ctx.restore();
 
     ctx.restore();
 
     if (state.flash>0){
+      /* FIX: rgba needs to be a string */
       ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
+    /* FIX: template string for HUD */
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
-  function drawShieldIcon(ctx, x,y, r, glow=false){
-    ctx.save();
-    ctx.translate(x,y);
-    if (glow){
-      ctx.shadowColor = "rgba(122,245,255,.6)";
-      ctx.shadowBlur = 12;
-    }
+  function roundImage(img, x,y,w,h,r){
     ctx.beginPath();
-    // simple shield path
-    ctx.moveTo(0, -r-2);
-    ctx.lineTo(r*0.85, -r*0.4);
-    ctx.lineTo(r*0.85, r*0.2);
-    ctx.quadraticCurveTo(0, r+4, -r*0.85, r*0.2);
-    ctx.lineTo(-r*0.85, -r*0.4);
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
     ctx.closePath();
-    ctx.fillStyle = "rgba(122,245,255,.22)";
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#7af5ff";
-    ctx.stroke();
-    ctx.restore();
+    ctx.save(); ctx.clip(); ctx.drawImage(img, x, y, w, h); ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,.15)";
+    ctx.lineWidth = 2; ctx.stroke();
   }
 
-  // INIT
   reset();
   requestAnimationFrame(loop);
 })();
