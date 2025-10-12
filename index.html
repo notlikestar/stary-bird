@@ -1,4 +1,4 @@
-<!doctype html>
+ <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -381,8 +381,7 @@
     ctx.arcTo(x, y, x+w, y, r);
     ctx.closePath();
     ctx.save(); ctx.clip(); ctx.drawImage(img, x, y, w, h); ctx.restore();
-    ctx.strokeStyle = "rgba(255,255,255,.15)";
-    ctx.lineWidth = 2; ctx.stroke();
+
   }
 
   reset();
