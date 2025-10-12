@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Star Glide</title>
 <meta name="theme-color" content="#0a0f17">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10,48 +11,63 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
   :root { color-scheme: light dark; }
-  /* Reset & iOS-friendly fullscreen */
-  html, body { margin:0; padding:0; height:100%; background:#07090d; color:#eaf2ff; font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif; }
+
+  /* Page & scrolling guards */
+  html, body {
+    margin:0; padding:0; height:100%;
+    background:#07090d; color:#eaf2ff;
+    font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  }
   body {
-    overflow:hidden;                 /* no scroll */
+    overflow:hidden;               /* no scroll */
     overscroll-behavior:none;
-    touch-action:none;               /* prevent swipe/scroll gestures */
+    touch-action:none;             /* block page gestures during play */
     -webkit-user-select:none;
     -webkit-touch-callout:none;
   }
-  /* The stage is fixed to the visible viewport and respects the notch */
-  .stage {
+
+  /* Full-bleed stage: NO safe-area padding here (prevents left gap) */
+  .stage{
     position:fixed;
-    inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    inset:0;                       /* edge-to-edge */
     width:100vw;
-    height:100svh;                   /* iOS 16+ visible viewport units */
+    height:100svh;                 /* visible viewport height (iOS-safe) */
     display:block;
     background:transparent;
   }
-  /* Fallback: JS will also force exact px height via visualViewport */
-  #game {
-    display:block;
-    width:100%;
-    height:100%;
+
+  /* Canvas fills the stage exactly and is anchored left/top */
+  #game{
+    position:absolute; left:0; top:0;
+    display:block; width:100%; height:100%;
     background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14);
     touch-action:none;
   }
 
+  /* UI overlays respect the notch (safe areas) */
   .hud{
-    position:absolute; right:12px; top:12px;
-    background:rgba(255,255,255,.06); padding:6px 10px;
-    border-radius:10px; font-weight:800; letter-spacing:.06em
+    position:absolute;
+    right:calc(12px + env(safe-area-inset-right));
+    top:calc(12px + env(safe-area-inset-top));
+    background:rgba(255,255,255,.06);
+    padding:6px 10px; border-radius:10px;
+    font-weight:800; letter-spacing:.06em;
+    z-index:2;
+  }
+  .controls{
+    position:absolute;
+    left:calc(12px + env(safe-area-inset-left));
+    top:calc(12px + env(safe-area-inset-top));
+    opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
   }
   .center{
     position:absolute; inset:0; display:grid; place-items:center;
     pointer-events:none; font-weight:900; letter-spacing:.08em;
-    color:#9fb7ff66; text-align:center; padding:0 10px
+    color:#9fb7ff66; text-align:center; padding:0 10px; z-index:1;
   }
-  .controls{ position:absolute; left:12px; top:12px; opacity:.6; font-weight:700 }
 </style>
 </head>
 <body>
-  <!-- Fullscreen stage -->
   <div class="stage">
     <canvas id="game"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
@@ -66,16 +82,15 @@
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
 
-  /* ==== iPhone landscape sizing: always match the *visible* viewport ==== */
+  /* ---- iPhone landscape sizing: always match the *visible* viewport ---- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
   function sizeToVisualViewport() {
-    // Prefer visualViewport for iOS Safari chrome/show-hide correctness
     const vv = window.visualViewport;
-    const w = vv ? Math.floor(vv.width) : window.innerWidth;
-    const h = vv ? Math.floor(vv.height) : window.innerHeight;
+    const w  = vv ? Math.floor(vv.width)  : window.innerWidth;
+    const h  = vv ? Math.floor(vv.height) : window.innerHeight;
 
-    // Set canvas CSS size via style to dodge rounding bugs
+    // Ensure CSS box matches exactly (prevents subpixel scroll/gap)
     canvas.style.width  = w + 'px';
     canvas.style.height = h + 'px';
 
@@ -88,14 +103,13 @@
   }
 
   new ResizeObserver(() => {
-    DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
     sizeToVisualViewport();
   }).observe(document.body);
 
-  // React to orientation and the browser UI bar showing/hiding
   window.addEventListener('orientationchange', () => setTimeout(sizeToVisualViewport, 150), {passive:true});
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => sizeToVisualViewport(), {passive:true});
+    window.visualViewport.addEventListener('resize', sizeToVisualViewport, {passive:true});
   }
   sizeToVisualViewport();
 
@@ -107,9 +121,9 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  // ---- Your original game logic (unchanged except two tiny fixes) ----
+  /* ---------------------- Your original game logic ---------------------- */
 
-  // logo optional
+  // Optional logo (falls back to circle if not present)
   const logo = new Image();
   logo.src = "./assets/logo.png";
   let logoReady = false;
@@ -143,9 +157,9 @@
   canvas.addEventListener('touchstart', e=>{ e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend', e=>{ e.preventDefault(); p.hold = false; if (state.dead) restart(); }, {passive:false});
 
-  function rand(a,b){ return Math.random()*(b-a)+a; }
-  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-  function lerp(a,b,t){ return a + (b-a)*t; }
+  const rand  = (a,b)=> Math.random()*(b-a)+a;
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+  const lerp  = (a,b,t)=> a + (b-a)*t;
 
   function addPipe(){
     const h = canvas.clientHeight;
@@ -167,7 +181,7 @@
     proposed = clamp(proposed, safeTop, safeBot);
 
     const wobble = rand(-12, 12);
-    let gapY = clamp(proposed + wobble, safeTop, safeBot);
+    const gapY = clamp(proposed + wobble, safeTop, safeBot);
     const w = 70;
 
     state.pipes.push({x: canvas.clientWidth + 40, gapY, w, passed:false});
@@ -300,7 +314,9 @@
 
     for (const pipe of state.pipes){
       const half = state.gap/2;
-      const x = pipe.x, w = pipe.w, yTop = 0, hTop = pipe.gapY - half, yBot = pipe.gapY + half, hBot = canvas.clientHeight - yBot;
+      const x = pipe.x, w = pipe.w;
+      const yTop = 0, hTop = pipe.gapY - half;
+      const yBot = pipe.gapY + half, hBot = canvas.clientHeight - yBot;
       ctx.fillStyle = "#12324f";
       ctx.fillRect(x, yTop, w, hTop);
       ctx.fillRect(x, yBot, w, hBot);
