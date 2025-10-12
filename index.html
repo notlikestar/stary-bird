@@ -40,31 +40,7 @@
     opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
   }
 
-  /* Start overlay */
-  .overlay{
-    position:absolute; inset:0; display:grid; place-items:center; z-index:4;
-    background:radial-gradient(1200px 800px at 50% 30%, rgba(53,94,252,.12), transparent 60%);
-  }
-  .card{
-    background:linear-gradient(180deg,#0e1626,#0b1220);
-    border:1px solid #2a3a5a; border-radius:16px;
-    box-shadow:0 18px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
-    padding:22px 20px; text-align:center; width:min(92vw,420px);
-  }
-  .title{ font-weight:900; font-size:22px; letter-spacing:.08em; color:#eaf2ff; }
-  .sub{ margin-top:6px; color:#9fb7ffcc; font-weight:700; }
-  .btn{
-    display:inline-block; margin-top:14px; padding:14px 22px;
-    border-radius:14px; border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421); color:#eaf2ff;
-    font-weight:800; letter-spacing:.06em;
-    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
-    cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
-    transform:translateY(0); transition:transform .06s ease;
-  }
-  .btn:active{ transform:translateY(1px); }
-
-  /* Center hint (only used if you want text in-game; hidden by overlay anyway) */
+  /* Hint (kept minimal; can delete if you want zero UI) */
   .center{ position:absolute; inset:0; display:grid; place-items:center;
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
@@ -75,17 +51,7 @@
     <canvas id="game"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
-
-    <!-- Start Screen -->
-    <div class="overlay" id="startOverlay">
-      <div class="card">
-        <div class="title">STARY BIRD</div>
-        <div class="sub">Glide through the gates. Space / Tap to flap.</div>
-        <button class="btn" id="startBtn">START</button>
-      </div>
-    </div>
-
-    <div class="center" id="msg" style="display:none">PRESS SPACE / TAP</div>
+    <div class="center" id="msg">TAP / SPACE TO START</div>
   </div>
 
 <script>
@@ -95,8 +61,7 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
-  const startOverlay = document.getElementById('startOverlay');
-  const startBtn = document.getElementById('startBtn');
+  const msg = document.getElementById('msg');
 
   /* ---------- Robust sizing for iPhone landscape ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -124,6 +89,16 @@
     lastTouchEnd = now;
   }, {passive:false});
 
+  /* ----------------------- Logo (player graphic) ----------------------- */
+  // Place your logo file at: assets/logo.png  (transparent PNG recommended)
+  const logoImg = new Image();
+  logoImg.decoding = 'async';
+  logoImg.loading = 'eager';
+  logoImg.crossOrigin = 'anonymous';
+  logoImg.src = 'assets/logo.png';
+  let logoReady = false;
+  logoImg.onload = () => { logoReady = true; };
+
   /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
@@ -141,17 +116,25 @@
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
   /* ----------------------- Input ----------------------- */
-  function startIfNeeded(){ if (!state.playing && !state.dead) start(); }
+  function startIfNeeded(){
+    if (!state.playing && !state.dead){
+      start();
+    } else if (state.dead){
+      restart();
+    }
+  }
   window.addEventListener('keydown', e => {
-    if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = true; startIfNeeded(); }
-    if (e.code === 'Enter') { e.preventDefault(); startIfNeeded(); }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
+      e.preventDefault(); p.hold = true; startIfNeeded();
+    }
   }, {passive:false});
   window.addEventListener('keyup', e => {
-    if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = false; if (state.dead) restart(); }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
+      e.preventDefault(); p.hold = false; if (state.dead) restart();
+    }
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead) restart(); }, {passive:false});
-  startBtn.addEventListener('click', () => startIfNeeded());
 
   /* ----------------------- Utils ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -211,14 +194,13 @@
     // Cosmetics reset per run
     state.trailColor='#cfe3ff'; state.unlocked={ blue:false, gold:false };
 
-    // Show start screen
-    startOverlay.style.display = '';
-    startBtn.textContent = 'START';
+    // No overlay — show hint text
+    if (msg) msg.style.display = '';
   }
   function start(){
     if (state.dead) return;
     state.playing=true;
-    startOverlay.style.display = 'none';
+    if (msg) msg.style.display = 'none';
   }
   function restart(){ reset(); start(); }
 
@@ -312,9 +294,8 @@
     state.shake = 12; state.flash = 0.8; p.hold = false;
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-    // Show start overlay as restart
-    startOverlay.style.display = '';
-    startBtn.textContent = 'RESTART';
+    // No overlay — show hint to restart on tap/space
+    if (msg) { msg.textContent = 'TAP / SPACE TO RESTART'; msg.style.display = ''; }
   }
 
   /* ----------------------- Render ----------------------- */
@@ -368,15 +349,31 @@
     }
     ctx.globalAlpha = 1;
 
-    // player (simple circular ship)
+    // player — draw ONLY the logo image (no circle/outline → no border)
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-    const sz = 54;
-    ctx.fillStyle = "#6aa0ff";
-    ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font="bold 12px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("STAR",0,0);
+    const sz = 54; // logical size of player
+    const drawW = sz; const drawH = sz;
+    // Mild drop “glow” behind logo to help visibility without adding a border
+    ctx.globalAlpha = 0.25;
+    ctx.filter = 'blur(4px)';
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(0, 0, drawW*0.45, drawH*0.45, 0, 0, Math.PI*2); ctx.fill();
+    ctx.filter = 'none'; ctx.globalAlpha = 1;
+
+    if (logoReady){
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      // Center the logo; assumes transparent PNG with tight bounds
+      ctx.drawImage(logoImg, -drawW/2, -drawH/2, drawW, drawH);
+    } else {
+      // Fallback: simple diamond if logo not yet loaded
+      ctx.fillStyle = '#9fc2ff';
+      ctx.beginPath();
+      ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
 
     ctx.restore();
