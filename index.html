@@ -10,7 +10,7 @@
 <style>
   :root { color-scheme: light dark; }
   html, body {
-    margin: 0; padding: 0; height: 100%;
+    margin:0; padding:0; height:100%;
     background:#07090d; color:#eaf2ff;
     font:14px/1.5 system-ui, Segoe UI, Roboto, Arial, sans-serif;
   }
@@ -19,42 +19,55 @@
     -webkit-user-select:none; -webkit-touch-callout:none;
   }
 
-  /* Full-bleed stage: no safe-area padding here (prevents left gap) */
-  .stage {
-    position: fixed; inset: 0; width: 100vw; height: 100svh;
-    background: transparent;
-  }
+  /* Edge-to-edge stage (no left gap); canvas fills it */
+  .stage { position:fixed; inset:0; width:100vw; height:100svh; background:transparent; }
+  #game  { position:absolute; left:0; top:0; width:100%; height:100%; display:block;
+           background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none; }
 
-  /* Canvas fills the stage and is anchored top-left */
-  #game {
-    position: absolute; left: 0; top: 0;
-    width: 100%; height: 100%;
-    display: block;
-    background: linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14);
-    touch-action: none;
-  }
-
-  /* UI overlays honor the notch (safe areas) */
+  /* HUD respects the notch */
   .hud{
     position:absolute;
-    right: calc(12px + env(safe-area-inset-right));
-    top:   calc(12px + env(safe-area-inset-top));
-    background: rgba(255,255,255,.08);
-    padding: 6px 10px; border-radius: 10px;
-    font-weight: 800; letter-spacing: .06em;
-    z-index:2;
+    right:calc(12px + env(safe-area-inset-right));
+    top:  calc(12px + env(safe-area-inset-top));
+    background:rgba(255,255,255,.08);
+    padding:6px 10px; border-radius:10px;
+    font-weight:800; letter-spacing:.06em; z-index:3;
   }
   .controls{
     position:absolute;
-    left: calc(12px + env(safe-area-inset-left));
-    top:  calc(12px + env(safe-area-inset-top));
+    left:calc(12px + env(safe-area-inset-left));
+    top: calc(12px + env(safe-area-inset-top));
     opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
   }
-  .center{
-    position:absolute; inset:0; display:grid; place-items:center;
-    pointer-events:none; font-weight:900; letter-spacing:.08em;
-    color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1;
+
+  /* Start overlay */
+  .overlay{
+    position:absolute; inset:0; display:grid; place-items:center; z-index:4;
+    background:radial-gradient(1200px 800px at 50% 30%, rgba(53,94,252,.12), transparent 60%);
   }
+  .card{
+    background:linear-gradient(180deg,#0e1626,#0b1220);
+    border:1px solid #2a3a5a; border-radius:16px;
+    box-shadow:0 18px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    padding:22px 20px; text-align:center; width:min(92vw,420px);
+  }
+  .title{ font-weight:900; font-size:22px; letter-spacing:.08em; color:#eaf2ff; }
+  .sub{ margin-top:6px; color:#9fb7ffcc; font-weight:700; }
+  .btn{
+    display:inline-block; margin-top:14px; padding:14px 22px;
+    border-radius:14px; border:1px solid #2a3a5a;
+    background:linear-gradient(180deg,#111827,#0d1421); color:#eaf2ff;
+    font-weight:800; letter-spacing:.06em;
+    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
+    transform:translateY(0); transition:transform .06s ease;
+  }
+  .btn:active{ transform:translateY(1px); }
+
+  /* Center hint (only used if you want text in-game; hidden by overlay anyway) */
+  .center{ position:absolute; inset:0; display:grid; place-items:center;
+           pointer-events:none; font-weight:900; letter-spacing:.08em;
+           color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 </style>
 </head>
 <body>
@@ -62,7 +75,17 @@
     <canvas id="game"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
-    <div class="center" id="msg">PRESS SPACE / TAP</div>
+
+    <!-- Start Screen -->
+    <div class="overlay" id="startOverlay">
+      <div class="card">
+        <div class="title">STARY BIRD</div>
+        <div class="sub">Glide through the gates. Space / Tap to flap.</div>
+        <button class="btn" id="startBtn">START</button>
+      </div>
+    </div>
+
+    <div class="center" id="msg" style="display:none">PRESS SPACE / TAP</div>
   </div>
 
 <script>
@@ -72,28 +95,22 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
-  const msg = document.getElementById('msg');
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
 
   /* ---------- Robust sizing for iPhone landscape ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-
   function sizeToViewport() {
-    // Prefer visualViewport for iOS chrome show/hide correctness
     const vv = window.visualViewport;
     const w = Math.floor(vv ? vv.width  : window.innerWidth);
     const h = Math.floor(vv ? vv.height : window.innerHeight);
-
-    // Ensure CSS size matches exactly (prevents subpixel gap/scroll)
     canvas.style.width  = w + 'px';
     canvas.style.height = h + 'px';
-
-    // Backing resolution at DPR
     const cw = Math.max(1, Math.floor(w * DPR));
     const ch = Math.max(1, Math.floor(h * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
   }
-
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
@@ -116,25 +133,25 @@
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
-    // Cosmetics
+    // Cosmetics (no crown, no lettering)
     trailColor:'#cfe3ff',
-    unlocked:{ blue:false, gold:false, crown:false },
-    crownActive:false,
-    effectTimer:0, announce:''
+    unlocked:{ blue:false, gold:false }
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
   /* ----------------------- Input ----------------------- */
-  function startIfNeeded(){ if (!state.playing) start(); }
+  function startIfNeeded(){ if (!state.playing && !state.dead) start(); }
   window.addEventListener('keydown', e => {
     if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = true; startIfNeeded(); }
+    if (e.code === 'Enter') { e.preventDefault(); startIfNeeded(); }
   }, {passive:false});
   window.addEventListener('keyup', e => {
     if (['Space','ArrowUp','KeyW'].includes(e.code)) { e.preventDefault(); p.hold = false; if (state.dead) restart(); }
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead) restart(); }, {passive:false});
+  startBtn.addEventListener('click', () => startIfNeeded());
 
   /* ----------------------- Utils ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -173,32 +190,12 @@
   }
 
   /* ----------------------- Cosmetics ----------------------- */
-  function announce(text){ state.announce = text; state.effectTimer = 180; }
-  function triggerCrownEffect(){
-    for (let i=0;i<90;i++){
-      state.particles.push({
-        x:p.x, y:p.y,
-        vx: Math.cos(i/90*2*Math.PI) * (Math.random()*3 + 1.2),
-        vy: Math.sin(i/90*2*Math.PI) * (Math.random()*3 + 1.2),
-        r: 2 + Math.random()*2,
-        life: 60 + Math.random()*24,
-        color: '#ffd54a'
-      });
-    }
-  }
   function checkMilestones(){
     if (state.score >= 10 && !state.unlocked.blue){
-      state.unlocked.blue = true; state.trailColor = '#4ab7ff';
-      announce('🔥 BLUE FLAME UNLOCKED!');
+      state.unlocked.blue = true; state.trailColor = '#4ab7ff'; // blue
     }
     if (state.score >= 25 && !state.unlocked.gold){
-      state.unlocked.gold = true; state.trailColor = '#ffd54a';
-      announce('✨ GOLD TRAIL UNLOCKED!');
-    }
-    if (state.score >= 50 && !state.unlocked.crown){
-      state.unlocked.crown = true; state.trailColor = '#ffd54a';
-      state.crownActive = true; announce('👑 CROWN MODE UNLOCKED!');
-      triggerCrownEffect();
+      state.unlocked.gold = true; state.trailColor = '#ffd54a'; // gold
     }
   }
 
@@ -210,12 +207,19 @@
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-    // reset cosmetics per run
-    state.trailColor='#cfe3ff'; state.unlocked={blue:false,gold:false,crown:false};
-    state.crownActive=false; state.effectTimer=0; state.announce='';
-    msg.textContent='PRESS SPACE / TAP';
+
+    // Cosmetics reset per run
+    state.trailColor='#cfe3ff'; state.unlocked={ blue:false, gold:false };
+
+    // Show start screen
+    startOverlay.style.display = '';
+    startBtn.textContent = 'START';
   }
-  function start(){ if (state.dead) return; state.playing=true; msg.textContent=''; }
+  function start(){
+    if (state.dead) return;
+    state.playing=true;
+    startOverlay.style.display = 'none';
+  }
   function restart(){ reset(); start(); }
 
   /* ----------------------- Particles ----------------------- */
@@ -226,8 +230,8 @@
         y: p.y + Math.random()*10 - 5,
         vx: -state.speed*0.6 + (Math.random()*-0.6),
         vy: (Math.random()-.5)*1.3,
-        life: rand(18,32),
-        r: rand(2,4),
+        life: Math.random()*14+24,
+        r: Math.random()*2+2,
         color: state.trailColor
       });
     }
@@ -265,7 +269,9 @@
       for (const orb of state.orbs)  orb.x  -= state.speed;
 
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; checkMilestones(); }
+        if (!pipe.passed && p.x > pipe.x + pipe.w){
+          pipe.passed = true; state.score++; checkMilestones();
+        }
         if (hitPipe(pipe)) die();
       }
       if (hitBounds()) die();
@@ -274,13 +280,13 @@
         if (!o.taken){
           const dx = p.x - o.x, dy = p.y - o.y;
           if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-            o.taken = true; state.score += 2; state.shake = Math.max(state.shake, 6); checkMilestones();
+            o.taken = true; state.score += 2; checkMilestones();
             for (let i=0;i<12;i++){
               state.particles.push({
                 x:o.x, y:o.y,
-                vx: Math.cos(i/12*2*Math.PI)*rand(0.5,2.2),
-                vy: Math.sin(i/12*2*Math.PI)*rand(0.5,2.2),
-                life: rand(14,26), r: rand(1.5,3.5), color:'#9fe9ff'
+                vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
+                vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
+                life: Math.random()*12+18, r: Math.random()*2+1.6, color:'#9fe9ff'
               });
             }
           }
@@ -292,8 +298,6 @@
 
       for (const prt of state.particles){ prt.x += prt.vx; prt.y += prt.vy; prt.life--; }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-    } else {
-      p.y += Math.sin(state.t/400)*0.3; p.rot = Math.sin(state.t/600)*0.1;
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
@@ -308,7 +312,9 @@
     state.shake = 12; state.flash = 0.8; p.hold = false;
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-    msg.textContent = 'GAME OVER — PRESS SPACE / TAP';
+    // Show start overlay as restart
+    startOverlay.style.display = '';
+    startBtn.textContent = 'RESTART';
   }
 
   /* ----------------------- Render ----------------------- */
@@ -340,7 +346,7 @@
       if (hBot>0) ctx.fillRect(x, yBot, w, hBot);
       ctx.fillStyle = "#1a476f";
       if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
-      if (hBot>0) ctx.fillRect(x, yBot, w, 4);
+      if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
     }
 
     // orbs
@@ -362,73 +368,26 @@
     }
     ctx.globalAlpha = 1;
 
-    // player + crown
+    // player (simple circular ship)
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
-
-    if (state.crownActive){
-      ctx.save(); ctx.translate(0, -34);
-      drawCrown(ctx, 18);
-      ctx.restore();
-    }
-
-    // simple ship (fallback graphic)
     const sz = 54;
     ctx.fillStyle = "#6aa0ff";
     ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.font="bold 12px system-ui"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("STAR",0,0);
+    ctx.restore();
 
-    ctx.restore(); // player
-    ctx.restore(); // shake
+    ctx.restore();
 
-    // flash
     if (state.flash>0){
       ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
-    // cosmetic announcements
-    if (state.effectTimer > 0 && state.announce){
-      state.effectTimer--;
-      ctx.save();
-      const a = Math.min(1, state.effectTimer / 60);
-      ctx.globalAlpha = a;
-      ctx.font = 'bold 22px system-ui';
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.fillText(state.announce, canvas.clientWidth/2, canvas.clientHeight*0.15);
-      ctx.restore();
-    }
-
     // HUD
     hud.textContent = `${state.score} • HI ${state.hi}`;
-  }
-
-  function drawCrown(ctx, r){
-    ctx.save();
-    ctx.fillStyle = '#ffd54a';
-    ctx.strokeStyle = '#b78900';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-r, 6);
-    ctx.lineTo(-r*0.6, -2);
-    ctx.lineTo(-r*0.2, 6);
-    ctx.lineTo(r*0.2, -2);
-    ctx.lineTo(r*0.6, 6);
-    ctx.lineTo(r, -2);
-    ctx.lineTo(r, 6);
-    ctx.lineTo(-r, 6);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // jewels
-    ctx.fillStyle = '#fff3a1';
-    for (let i=-2; i<=2; i++){
-      ctx.beginPath(); ctx.arc(i * r*0.25, 2, 2.2, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
   }
 
   /* ----------------------- Boot ----------------------- */
