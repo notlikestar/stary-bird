@@ -400,7 +400,7 @@
     let proposed = prev + rand(-allowedDelta, +allowedDelta);
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 70;
+    const w = 200;
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
