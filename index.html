@@ -40,7 +40,7 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Character button (safe-area aware) */
+  /* Character button */
   .charbtn{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
@@ -54,7 +54,7 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* --------- Compact character slider --------- */
+  /* Compact character slider */
   .charslider{
     position:fixed;
     left:calc(10px + env(safe-area-inset-left));
@@ -74,11 +74,7 @@
     visibility:hidden;
   }
   .charslider.show{ transform:translateY(0); visibility:visible; }
-  .chars{
-    display:flex; gap:6px; align-items:center;
-    overflow-x:auto; overscroll-behavior:contain; padding:2px;
-    -webkit-overflow-scrolling:touch;
-  }
+  .chars{ display:flex; gap:6px; align-items:center; overflow-x:auto; padding:2px; }
   .chars::-webkit-scrollbar{ height:6px; }
   .chars::-webkit-scrollbar-thumb{ background:#22314c; border-radius:6px; }
 
@@ -95,28 +91,18 @@
   .ctile:active{ transform:scale(.98); }
   .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
 
-  .cthumb{
-    width:40px; height:40px; display:grid; place-items:center;
-    border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
-  }
-  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
+  .cthumb{ width:40px; height:40px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden; }
+  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; }
 
   .close-tab{
-    position:absolute;
-    top:-18px;
-    left:50%;
-    transform:translateX(-50%);
-    height:18px; min-width:34px;
-    padding:0 6px;
-    border-radius:9px;
-    border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421);
+    position:absolute; top:-18px; left:50%; transform:translateX(-50%);
+    height:18px; min-width:34px; padding:0 6px; border-radius:9px;
+    border:1px solid #2a3a5a; background:linear-gradient(180deg,#111827,#0d1421);
     color:#cfe0ff; font-weight:900; font-size:12px; letter-spacing:.02em;
     box-shadow:0 8px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
     line-height:16px;
   }
 
-  /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
     background:#2a1620; color:#ffd5dc; border:1px solid #572238;
@@ -136,20 +122,19 @@
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
-  <!-- Compact Character Slider (icons only) -->
+  <!-- Character slider -->
   <div class="charslider" id="charSlider" aria-hidden="true">
     <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">▼</button>
     <div class="chars" id="charRow"></div>
   </div>
 
-  <!-- Toast container -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
   'use strict';
 
-  /* ==================== SMALL TOAST ==================== */
+  /* ===== Toast ===== */
   const toastEl = document.getElementById('toast');
   let toastTimer = null;
   function showToast(msg){
@@ -160,20 +145,17 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  /* ==================== GAME + SKINS ==================== */
-
+  /* ===== Setup ===== */
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
-
-  // slider elements
   const charSlider = document.getElementById('charSlider');
   const charRow    = document.getElementById('charRow');
   const charCloseBtn = document.getElementById('charCloseBtn');
 
-  /* ---------- Robust sizing ---------- */
+  /* Responsive canvas */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
@@ -199,24 +181,13 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Asset helpers ----------------------- */
+  /* ===== Assets ===== */
   const makeImg = (src) => {
     const img = new Image();
     img.decoding = 'async';
     img.loading = 'eager';
     img.src = src;
-    img.onerror = () => {
-      img._error = true;
-      console.warn('[Image failed to load]', src);
-      showToast('Image not found: ' + src);
-    };
-    img.onload = () => {
-      if (!img.naturalWidth) {
-        img._error = true;
-        console.warn('[Image loaded but width=0]', src);
-        showToast('Bad image: ' + src);
-      }
-    };
+    img.onerror = () => { img._error = true; showToast('Image not found: ' + src); };
     return img;
   };
 
@@ -274,7 +245,6 @@
   }
   updateCharBtnLabel();
 
-  /* ----------------------- Compact Character Slider ----------------------- */
   function buildCharRow(){
     charRow.innerHTML = '';
     skins.forEach(skin => {
@@ -284,25 +254,19 @@
       tile.dataset.skin = skin.id;
 
       const thumb = document.createElement('div'); thumb.className = 'cthumb';
-
       if (skin.type === 'image' && skin.img && !skin.img._error){
-        const img = document.createElement('img');
-        img.src = skin.img.src; img.alt = skin.name;
-        thumb.appendChild(img);
+        const img = document.createElement('img'); img.src = skin.img.src; img.alt = skin.name; thumb.appendChild(img);
       } else {
         const c = document.createElement('div');
         c.style.cssText = 'width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;';
-        c.textContent = 'ERR';
-        thumb.appendChild(c);
+        c.textContent = 'ERR'; thumb.appendChild(c);
       }
-
       tile.appendChild(thumb);
       tile.addEventListener('click', () => { setSkinById(skin.id); closeCharSlider(); });
       charRow.appendChild(tile);
     });
     markSelectedTile();
   }
-
   function markSelectedTile(){
     const tiles = charRow.querySelectorAll('.ctile');
     tiles.forEach(t => t.classList.remove('selected'));
@@ -310,7 +274,6 @@
     const current = s ? charRow.querySelector(`.ctile[data-skin="${s.id}"]`) : null;
     if (current) current.classList.add('selected');
   }
-
   function openCharSlider(){
     if (!charRow.dataset.built){
       buildCharRow();
@@ -323,22 +286,20 @@
     charSlider.classList.remove('show');
     charSlider.setAttribute('aria-hidden','true');
   }
-
   charBtn.addEventListener('click', e => {
     e.preventDefault();
     if (!state.playing) {
       const open = charSlider.classList.contains('show');
       if (open) closeCharSlider(); else openCharSlider();
     } else {
-      nextSkin(); // in-game fallback
+      nextSkin();
     }
   });
   charCloseBtn.addEventListener('click', () => closeCharSlider());
 
-  /* ----------------------- Helpers ----------------------- */
+  /* ===== Helpers ===== */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
   const SETTINGS = {
@@ -356,11 +317,11 @@
     respawnDelayMs: 1000
   };
 
-  /* ----------------------- Sleeve sprites ----------------------- */
+  /* ===== Sleeve sprites ===== */
   const sleeveTopImg = makeImg('assets/sleevetop.png');     // cuff at bottom
   const sleeveBotImg = makeImg('assets/sleevebottom.png');  // cuff at top
 
-  /* ----------------------- Game State ----------------------- */
+  /* ===== Game State ===== */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
@@ -369,20 +330,13 @@
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
-
-    trailBase:'#cfe3ff',
-    trailBlue:'#4ab7ff',
-    trailPurple:'#b06cff',
-    trailGold:'#ffd54a',
-
-    startTime:0,
-    deathPause:false,
-    deathTimer:0
+    trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ffd54a',
+    startTime:0, deathPause:false, deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
-  /* ----------------------- Input ----------------------- */
+  /* ===== Input ===== */
   function startIfNeeded(){
     if (charSlider.classList.contains('show')) return;
     if (!state.playing && !state.dead){
@@ -405,13 +359,13 @@
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
-  /* ----------------------- World ----------------------- */
+  /* ===== World ===== */
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
 
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    theBaseMax = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, theBaseMax));
+    const baseMax = state.maxSpawnFrames * (4.2/state.speed); // <-- fixed name
+    state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
 
     const mid = h/2;
@@ -424,7 +378,7 @@
 
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 70; // keep original pipe width for gameplay
+    const w = 70; // pipe/sleeve column width
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
@@ -471,7 +425,7 @@
     return pipe.baseGapY;
   };
 
-  /* ----------------------- Flow ----------------------- */
+  /* ===== Flow ===== */
   function reset(){
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
@@ -485,7 +439,6 @@
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     closeCharSlider();
     updateUI();
-
     ensureValidSkin();
   }
   function start(){
@@ -497,12 +450,9 @@
     updateUI();
   }
   function restart(){ reset(); start(); }
+  function updateUI(){ charBtn.style.display = (!state.playing ? '' : 'none'); }
 
-  function updateUI(){
-    charBtn.style.display = (!state.playing ? '' : 'none');
-  }
-
-  /* ----------------------- Trail ----------------------- */
+  /* ===== Trail ===== */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -527,7 +477,7 @@
     }
   }
 
-  /* ----------------------- Collisions ----------------------- */
+  /* ===== Collisions ===== */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -538,7 +488,7 @@
   }
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  /* ----------------------- Explosion ----------------------- */
+  /* ===== Explosion ===== */
   function explode(px, py){
     const trail = colorForScore(state.score);
     let skinColor = '#cfe3ff';
@@ -550,12 +500,8 @@
       const spd = 2.2 + Math.random()*3.2;
       const life = 24 + Math.random()*18;
       state.particles.push({
-        type:'spark',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0,
-        life, maxLife:life,
-        r: 1.6 + Math.random()*2.2,
+        type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2,
         color: (Math.random()<0.6 ? trail : '#9fe9ff')
       });
     }
@@ -564,21 +510,17 @@
       const spd = 2.0 + Math.random()*3.8;
       const life = 26 + Math.random()*22;
       state.particles.push({
-        type:'shard',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
+        type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
         g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life,
-        w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI,
-        color: (Math.random()<0.5 ? skinColor : trail)
+        life, maxLife:life, w: 6 + Math.random()*6, h: 2 + Math.random()*3,
+        rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail)
       });
     }
     state.shake = 10;
     state.flash = 0.5;
   }
 
-  /* ----------------------- Loop (TIME-BASED) ----------------------- */
+  /* ===== Loop ===== */
   let last = performance.now();
   function loop(t){
     const dt = Math.min(32, t - last); last = t;
@@ -587,7 +529,6 @@
 
     if (state.deathPause){
       state.deathTimer -= dt;
-
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -596,15 +537,10 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
-
-      if (state.deathTimer <= 0){
-        state.deathPause = false;
-        reset();
-      }
+      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
 
@@ -618,6 +554,7 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
+      // soft pull toward orb
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
@@ -690,28 +627,24 @@
     if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
-
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-
     explode(p.x, p.y);
-
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
-
     if (msg) msg.style.display = 'none';
     charBtn.style.display = 'none';
     closeCharSlider();
   }
 
-  /* ----------------------- DRAW ----------------------- */
+  /* ===== Draw ===== */
   function draw(){
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // star specks
+    // stars
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -728,7 +661,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // ----- SLEEVE PIPES -----
+    // SLEEVE PIPES
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
         ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
@@ -740,16 +673,34 @@
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      if (hTop > 0 && sleeveTopImg.complete && !sleeveTopImg._error) {
-        // full sleeve scaled to segment, cuff meets gap
-        ctx.drawImage(sleeveTopImg, 0, 0, sleeveTopImg.naturalWidth||sleeveTopImg.width, sleeveTopImg.naturalHeight||sleeveTopImg.height, x, yTop, w, hTop);
+
+      // Top sleeve (cuff at gap)
+      if (hTop > 0){
+        if (sleeveTopImg.complete && !sleeveTopImg._error){
+          ctx.drawImage(
+            sleeveTopImg,
+            0, 0, sleeveTopImg.naturalWidth || sleeveTopImg.width, sleeveTopImg.naturalHeight || sleeveTopImg.height,
+            x, yTop, w, hTop
+          );
+        } else {
+          ctx.fillStyle = "#1b2840"; ctx.fillRect(x, yTop, w, hTop);
+        }
       }
-      if (hBot > 0 && sleeveBotImg.complete && !sleeveBotImg._error) {
-        ctx.drawImage(sleeveBotImg, 0, 0, sleeveBotImg.naturalWidth||sleeveBotImg.width, sleeveBotImg.naturalHeight||sleeveBotImg.height, x, yBot, w, hBot);
+      // Bottom sleeve (cuff at gap)
+      if (hBot > 0){
+        if (sleeveBotImg.complete && !sleeveBotImg._error){
+          ctx.drawImage(
+            sleeveBotImg,
+            0, 0, sleeveBotImg.naturalWidth || sleeveBotImg.width, sleeveBotImg.naturalHeight || sleeveBotImg.height,
+            x, yBot, w, hBot
+          );
+        } else {
+          ctx.fillStyle = "#1b2840"; ctx.fillRect(x, yBot, w, hBot);
+        }
       }
     }
 
-    // ----- ORBS -----
+    // ORBS
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
@@ -763,7 +714,7 @@
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // ----- PARTICLES -----
+    // PARTICLES
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -771,9 +722,7 @@
       ctx.fillStyle = prt.color;
 
       if (prt.type === 'shard'){
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
+        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
@@ -782,7 +731,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // ----- PLAYER (no glow) -----
+    // PLAYER (no glow)
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
