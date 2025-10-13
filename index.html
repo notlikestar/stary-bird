@@ -82,7 +82,7 @@
     width:16px; height:16px; border-radius:50%;
     background:#eaf2ff; border:1px solid #2a3a5a;
     box-shadow:0 1px 2px rgba(0,0,0,.35);
-    margin-top:-4px; /* centers on the 8px track */
+    margin-top:-4px;
   }
   #volSlider::-moz-range-thumb{
     width:16px; height:16px; border-radius:50%;
@@ -152,6 +152,16 @@
     box-shadow:0 8px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
     line-height:16px;
   }
+
+  /* Toast */
+  .toast{
+    position:fixed; left:50%; top:12px; transform:translateX(-50%);
+    background:#2a1620; color:#ffd5dc; border:1px solid #572238;
+    padding:8px 12px; border-radius:10px; font-weight:700; letter-spacing:.02em;
+    box-shadow:0 12px 24px rgba(0,0,0,.4);
+    z-index:9999; opacity:0; transition:opacity .15s ease;
+  }
+  .toast.show{ opacity:1; }
 </style>
 </head>
 <body>
@@ -170,8 +180,6 @@
   </div>
 
   <!-- Background Music -->
-  <!-- Use playsinline+autoplay; browsers may still require a user gesture if not muted,
-       so we also call play() on load and on the first pointer interaction -->
   <audio id="bgMusic" src="assets/bgmusic.mp3" loop preload="auto" playsinline autoplay></audio>
 
   <!-- Compact Character Slider (icons only) -->
@@ -180,9 +188,23 @@
     <div class="chars" id="charRow"></div>
   </div>
 
+  <!-- Toast container -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
 <script>
 (() => {
   'use strict';
+
+  /* ==================== SMALL TOAST ==================== */
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(msg){
+    if (!toastEl) return;
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+  }
 
   /* ==================== MUSIC SYSTEM (autoplay + volume) ==================== */
   const bgMusic   = document.getElementById('bgMusic');
@@ -204,24 +226,18 @@
   const savedMusicPref = localStorage.getItem(MUSIC_KEY); // 'on' | 'off' | null
   musicBtn.textContent = (savedMusicPref === 'off' || savedVol === 0) ? '🔇' : '🎵';
 
-  // Try to autoplay right away (desktop usually OK; mobile may block)
   const tryPlay = () => {
-    // If user explicitly turned music off previously, don't auto-start
     if (savedMusicPref === 'off') return;
     return bgMusic.play().then(() => {
       playing = true;
       musicBtn.textContent = (bgMusic.volume === 0) ? '🔇' : '🎵';
-    }).catch(() => {
-      // Autoplay blocked — we'll start on first interaction
-    });
+    }).catch(() => {});
   };
-  // Attempt once on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     tryPlay();
   } else {
     document.addEventListener('DOMContentLoaded', tryPlay, { once:true });
   }
-  // Guaranteed backup: start on first pointer interaction if not already playing
   const kickstart = () => {
     if (!playing && savedMusicPref !== 'off') {
       bgMusic.play().then(() => {
@@ -233,7 +249,6 @@
   };
   window.addEventListener('pointerdown', kickstart, { once:true });
 
-  // Button toggles play/pause
   musicBtn.addEventListener('click', () => {
     if (playing) {
       bgMusic.pause();
@@ -248,8 +263,6 @@
       });
     }
   });
-
-  // Volume slider
   volSlider.addEventListener('input', () => {
     const v = parseFloat(volSlider.value);
     bgMusic.volume = isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.25;
@@ -257,16 +270,12 @@
   });
   volSlider.addEventListener('change', () => {
     try { localStorage.setItem(VOLUME_KEY, String(bgMusic.volume)); } catch(e){}
-    // If the user dragged volume from 0 up, ensure music preference is ON
     if (bgMusic.volume > 0 && !playing && localStorage.getItem(MUSIC_KEY) !== 'off') {
-      bgMusic.play().then(() => {
-        playing = true;
-        musicBtn.textContent = '🎵';
-      }).catch(()=>{});
+      bgMusic.play().then(() => { playing = true; musicBtn.textContent = '🎵'; }).catch(()=>{});
     }
   });
 
-  /* ==================== ORIGINAL GAME CODE ==================== */
+  /* ==================== ORIGINAL GAME + SKINS ==================== */
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
@@ -310,25 +319,59 @@
     const img = new Image();
     img.decoding = 'async';
     img.loading = 'eager';
-    img.crossOrigin = 'anonymous';
     img.src = src;
-    img.onerror = () => { img._error = true; };
+    img.onerror = () => {
+      img._error = true;
+      console.warn('[Skin image failed to load]', src);
+      showToast('Image not found: ' + src);
+    };
+    img.onload = () => {
+      if (!img.naturalWidth) {
+        img._error = true;
+        console.warn('[Skin image loaded but width=0]', src);
+        showToast('Bad image: ' + src);
+      } else {
+        console.log('[Skin image OK]', src, img.naturalWidth + 'x' + img.naturalHeight);
+      }
+    };
     return img;
   };
 
   const skins = [
-    { id:'logo',   type:'image', name:'Logo',   img: makeImg('assets/logo.png') },
-    { id:'hat',    type:'image', name:'Hat',    img: makeImg('assets/hatcharicter.png') },
-    { id:'seiji',    type:'image', name:'seiji',    img: makeImg('assets/seiji.png') },  
+    { id:'logo',   type:'image', name:'Logo', img: makeImg('assets/logo.png') },
+    { id:'hat',    type:'image', name:'Hat',  img: makeImg('assets/hatcharicter.png') },
+    { id:'seiji',  type:'image', name:'Seiji', img: makeImg('assets/seiji.png') },  /* <-- your new one */
   ];
+
+  function firstValidSkinIndex(){
+    for (let i=0;i<skins.length;i++){
+      const s = skins[i];
+      if (s.type === 'image' && s.img && !s.img._error) return i;
+      if (s.type !== 'image') return i;
+    }
+    return 0;
+  }
 
   let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
   if (skinIndex === -1) skinIndex = 0;
+
+  function ensureValidSkin(){
+    const s = skins[skinIndex];
+    if (s && s.type === 'image' && s.img && s.img._error){
+      const old = s.id;
+      skinIndex = firstValidSkinIndex();
+      try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
+      updateCharBtnLabel();
+      markSelectedTile();
+      showToast(`Switched from broken "${old}" to "${skins[skinIndex].name}"`);
+    }
+  }
 
   function setSkinById(id){
     const idx = skins.findIndex(s => s.id === id);
     if (idx >= 0){
       skinIndex = idx;
+      ensureValidSkin();
       try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
       updateCharBtnLabel();
       markSelectedTile();
@@ -336,12 +379,14 @@
   }
   function nextSkin(){
     skinIndex = (skinIndex + 1) % skins.length;
+    ensureValidSkin();
     try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
     updateCharBtnLabel();
     markSelectedTile();
   }
   function updateCharBtnLabel(){
-    charBtn.textContent = `Change Character (${skins[skinIndex].name})`;
+    const s = skins[skinIndex];
+    charBtn.textContent = `Change Character (${s ? s.name : '??'})`;
   }
   updateCharBtnLabel();
 
@@ -356,24 +401,15 @@
 
       const thumb = document.createElement('div'); thumb.className = 'cthumb';
 
-      if (skin.type === 'image' && skin.img){
+      if (skin.type === 'image' && skin.img && !skin.img._error){
         const img = document.createElement('img');
         img.src = skin.img.src; img.alt = skin.name;
         thumb.appendChild(img);
       } else {
-        const c = document.createElement('canvas'); c.width = 40; c.height = 40;
-        const cx = c.getContext('2d');
-        cx.imageSmoothingEnabled = true;
-        cx.imageSmoothingQuality = 'high';
-        cx.translate(20,20);
-        cx.fillStyle = (skin.color || '#9fc2ff');
-        if (skin.shape === 'diamond'){
-          cx.beginPath();
-          cx.moveTo(0,-16); cx.lineTo(16,0); cx.lineTo(0,16); cx.lineTo(-16,0); cx.closePath();
-          cx.fill();
-        } else {
-          cx.beginPath(); cx.arc(0,0, 16, 0, Math.PI*2); cx.fill();
-        }
+        // Red "ERR" placeholder so you see broken images immediately
+        const c = document.createElement('div');
+        c.style.cssText = 'width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;';
+        c.textContent = 'ERR';
         thumb.appendChild(c);
       }
 
@@ -387,7 +423,8 @@
   function markSelectedTile(){
     const tiles = charRow.querySelectorAll('.ctile');
     tiles.forEach(t => t.classList.remove('selected'));
-    const current = charRow.querySelector(`.ctile[data-skin="${skins[skinIndex].id}"]`);
+    const s = skins[skinIndex];
+    const current = s ? charRow.querySelector(`.ctile[data-skin="${s.id}"]`) : null;
     if (current) current.classList.add('selected');
   }
 
@@ -447,15 +484,12 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
 
-    // Trail palette
     trailBase:'#cfe3ff',
     trailBlue:'#4ab7ff',
     trailPurple:'#b06cff',
     trailGold:'#ffd54a',
 
     startTime:0,
-
-    // Death pause flags
     deathPause:false,
     deathTimer:0
   };
@@ -464,7 +498,7 @@
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
-    if (charSlider.classList.contains('show')) return; // don't start under slider
+    if (charSlider.classList.contains('show')) return;
     if (!state.playing && !state.dead){
       start();
     } else if (state.dead && !state.deathPause){
@@ -565,6 +599,9 @@
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     closeCharSlider();
     updateUI();
+
+    // If saved skin is broken, auto-fallback once
+    ensureValidSkin();
   }
   function start(){
     if (state.dead || state.deathPause) return;
@@ -580,7 +617,7 @@
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
-  /* ----------------------- Trail (discrete milestones) ----------------------- */
+  /* ----------------------- Trail ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -881,7 +918,8 @@
           ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
         }
       } else {
-        ctx.fillStyle = '#9fc2ff';
+        // If broken, draw a visible placeholder so it's obvious
+        ctx.fillStyle = '#ff9aa2';
         ctx.beginPath();
         ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
         ctx.fill();
