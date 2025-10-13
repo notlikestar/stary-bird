@@ -161,6 +161,9 @@
     const ch = Math.max(1, Math.floor(h * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
+
+    // reseed starfield for new size
+    seedStars();
   }
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
@@ -307,6 +310,119 @@
     respawnDelayMs: 1000        // 1s freeze before respawn
   };
 
+  /* ----------------------- Starfield (parallax + twinkle + streaks) ----------------------- */
+  const STAR_CFG = {
+    far:  { countPerKpx: 0.20, speed: 0.25,  size:[0.8,1.4],  colors:['#7ba9ff','#86b2ff'], twinkle: [0.25, 0.55] },
+    mid:  { countPerKpx: 0.32, speed: 0.55,  size:[1.0,1.8],  colors:['#a0c0ff','#9cbcff'], twinkle: [0.35, 0.75] },
+    near: { countPerKpx: 0.42, speed: 1.00,  size:[1.2,2.2],  colors:['#bcd1ff','#cfe0ff'], twinkle: [0.45, 0.95] }
+  };
+
+  let starsFar=[], starsMid=[], starsNear=[], shooters=[];
+
+  function randIn([a,b]){ return a + Math.random()*(b-a); }
+  function pick(arr){ return arr[(Math.random()*arr.length)|0]; }
+
+  function seedStars() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const kpx = (w*h)/1000;
+    starsFar = makeStars(STAR_CFG.far,  Math.floor(STAR_CFG.far.countPerKpx  * kpx));
+    starsMid = makeStars(STAR_CFG.mid,  Math.floor(STAR_CFG.mid.countPerKpx  * kpx));
+    starsNear= makeStars(STAR_CFG.near, Math.floor(STAR_CFG.near.countPerKpx * kpx));
+    shooters.length = 0;
+    nextShooterAt = 2000 + Math.random()*4000;
+  }
+  function makeStars(cfg, n){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const arr = new Array(n);
+    for (let i=0;i<n;i++){
+      arr[i] = {
+        x: Math.random()*w,
+        y: Math.random()*h,
+        r: randIn(cfg.size),
+        color: pick(cfg.colors),
+        speed: cfg.speed * (0.85 + Math.random()*0.3),
+        phase: Math.random()*Math.PI*2,
+        twk: randIn(cfg.twinkle)
+      };
+    }
+    return arr;
+  }
+
+  let nextShooterAt = 3000;
+  function maybeSpawnShooter(dt){
+    nextShooterAt -= dt;
+    if (nextShooterAt > 0) return;
+    nextShooterAt = 2500 + 2000*Math.random();
+
+    const h = canvas.clientHeight, w = canvas.clientWidth;
+    const y = Math.random()*h*0.7 + h*0.15;
+    const vx = - (2.2 + Math.random()*3.0);
+    const vy = (Math.random()*0.6 - 0.3);
+    shooters.push({ x: w + 40, y, vx, vy, life: 900, maxLife: 900 });
+  }
+
+  function updateStars(dt, step){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const advance = (arr)=>{
+      for (const s of arr){
+        s.x -= s.speed * step * 20;
+        if (s.x < -4) { s.x += w + 8; s.y = Math.random()*h; }
+      }
+    };
+    advance(starsFar); advance(starsMid); advance(starsNear);
+
+    maybeSpawnShooter(dt);
+    for (const st of shooters){
+      st.x += st.vx * step * 20;
+      st.y += st.vy * step * 20;
+      st.life -= dt;
+    }
+    while (shooters.length && shooters[0].life <= 0) shooters.shift();
+  }
+
+  function drawStarLayer(arr, baseAlpha){
+    for (const s of arr){
+      const tw = 0.35 + 0.65 * (0.5 + 0.5*Math.sin(state.t*0.001*s.twk + s.phase));
+      const a = Math.min(1, baseAlpha * tw);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = s.color;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+
+      if (arr === starsNear){
+        ctx.globalAlpha = a*0.25;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r*2.4, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawShooters(){
+    for (const st of shooters){
+      const a = Math.max(0, st.life / st.maxLife);
+      ctx.globalAlpha = 0.35 * a;
+      ctx.lineWidth = 1;
+      const len = 18 + (Math.abs(st.vx)*10);
+      const dx = len, dy = -st.vy*len*2;
+      ctx.strokeStyle = '#e7f0ff';
+      ctx.beginPath();
+      ctx.moveTo(st.x, st.y);
+      ctx.lineTo(st.x + dx, st.y + dy);
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.75 * a;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(st.x, st.y, 1.6, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawBackground(){
+    drawStarLayer(starsFar,  0.35);
+    drawStarLayer(starsMid,  0.55);
+    drawStarLayer(starsNear, 0.85);
+    drawShooters();
+  }
+
   /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
@@ -447,7 +563,6 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // Show character button only when not playing (start/death screens)
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
@@ -524,7 +639,7 @@
       });
     }
     state.shake = 10;
-    state.flash = 0.5; // keep flash ONLY for death/explosion
+    state.flash = 0.5;
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -534,9 +649,12 @@
     const step = dt / 16.67;
     state.t += dt;
 
-    /* ---- Death pause: animate particles only, freeze world, then reset ---- */
+    /* ---- Death pause: animate particles & background only, freeze world, then reset ---- */
     if (state.deathPause){
       state.deathTimer -= dt;
+
+      // keep starfield alive
+      updateStars(dt, step);
 
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
@@ -553,7 +671,7 @@
 
       if (state.deathTimer <= 0){
         state.deathPause = false;
-        reset(); // back to start screen (hover preview)
+        reset();
       }
       return;
     }
@@ -639,6 +757,9 @@
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
     }
 
+    // starfield always updates
+    updateStars(dt, step);
+
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
     draw();
     requestAnimationFrame(loop);
@@ -670,20 +791,8 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // Parallax starfield (two layers)
-    ctx.globalAlpha = 0.06;
-    for (let i=0;i<70;i++){
-      const x = (i*130 - (state.t*0.035)%130);
-      const y = 30 + (i*47) % (canvas.clientHeight-60);
-      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
-    }
-    ctx.globalAlpha = 0.12;
-    for (let i=0;i<40;i++){
-      const x = (i*220 - (state.t*0.06)%220);
-      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
-      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
-    }
-    ctx.globalAlpha = 1;
+    // Starfield (3 parallax layers + twinkle + occasional streaks)
+    drawBackground();
 
     ctx.save(); ctx.translate(sx, sy);
 
@@ -790,6 +899,7 @@
 
   /* ----------------------- Boot ----------------------- */
   reset();
+  seedStars();               // initialize starfield on first frame
   requestAnimationFrame(loop);
 })();
 </script>
