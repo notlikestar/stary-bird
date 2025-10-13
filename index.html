@@ -188,8 +188,7 @@
 
   const skins = [
     { id:'logo',   type:'image', name:'Logo',   img: makeImg('assets/logo.png') },
-    { id:'diamond',type:'shape', name:'Diamond',shape:'diamond', color:'#9fc2ff' },
-    { id:'circle', type:'shape', name:'Circle', shape:'circle',  color:'#6aa0ff' }
+    { id:'hat',    type:'image', name:'Hat',    img: makeImg('assets/hat.png') },  
   ];
 
   let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
