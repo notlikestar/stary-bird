@@ -29,7 +29,6 @@
     background:rgba(255,255,255,.08);
     padding:6px 10px; border-radius:10px;
     font-weight:800; letter-spacing:.06em; z-index:3;
-    white-space:nowrap;
   }
   .controls{
     position:absolute;
@@ -41,6 +40,7 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
+  /* Change Character button (safe-area aware) */
   .charbtn{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
@@ -53,15 +53,87 @@
     box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
     -webkit-tap-highlight-color:transparent;
   }
+
+  /* --------- Character Modal --------- */
+  .modal{
+    position:fixed; inset:0;
+    display:none; /* toggled by .show */
+    z-index:10;
+  }
+  .modal.show{ display:block; }
+  .modal-backdrop{
+    position:absolute; inset:0;
+    background:rgba(0,0,0,.45);
+    backdrop-filter:saturate(140%) blur(4px);
+  }
+  .modal-sheet{
+    position:absolute;
+    left:calc(10px + env(safe-area-inset-left));
+    right:calc(10px + env(safe-area-inset-right));
+    top:calc(10px + env(safe-area-inset-top));
+    bottom:calc(10px + env(safe-area-inset-bottom));
+    margin:auto;
+    max-width:min(780px, 92vw);
+    max-height:min(78vh, 520px);
+    border:1px solid #26334d;
+    background:linear-gradient(180deg,#101826,#0c1421);
+    box-shadow:0 18px 48px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    border-radius:16px;
+    display:flex; flex-direction:column;
+  }
+  .modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; border-bottom:1px solid #1e2a41;
+    font-weight:900; letter-spacing:.06em; color:#cfe0ff;
+  }
+  .modal-close{
+    appearance:none; border:1px solid #2a3a5a; border-radius:10px;
+    padding:6px 10px; background:#0e1624; color:#eaf2ff; font-weight:800;
+  }
+  .grid{
+    padding:12px; display:grid; gap:12px;
+    grid-template-columns: repeat( auto-fill, minmax(140px, 1fr) );
+    overflow:auto;
+  }
+  .tile{
+    border:1px solid #26334d; border-radius:14px; padding:12px;
+    background:linear-gradient(180deg,#0f1725,#0c1320);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    cursor:pointer; user-select:none;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+  }
+  .tile:active{ transform:scale(.98); }
+  .tile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
+  .thumb{
+    width:84px; height:84px; display:grid; place-items:center;
+    border-radius:12px; background:rgba(255,255,255,.04);
+    overflow:hidden;
+  }
+  .thumb canvas{ display:block; width:84px; height:84px; }
+  .thumb img{ display:block; width:84px; height:84px; object-fit:contain; image-rendering:auto; }
+  .label{ font-weight:800; color:#cfe0ff; letter-spacing:.04em; }
 </style>
 </head>
 <body>
   <div class="stage">
     <canvas id="game"></canvas>
-    <div class="hud" id="hud">0 • HI 0 • ⦿ 0</div>
+    <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
     <div class="center" id="msg">TAP / SPACE TO START</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
+  </div>
+
+  <!-- Character Select Modal -->
+  <div class="modal" id="charModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Select Character">
+      <div class="modal-head">
+        <div>SELECT CHARACTER</div>
+        <button class="modal-close" type="button" data-close>Close</button>
+      </div>
+      <div class="grid" id="charGrid"></div>
+    </div>
   </div>
 
 <script>
@@ -73,6 +145,8 @@
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
+  const charModal = document.getElementById('charModal');
+  const charGrid  = document.getElementById('charGrid');
 
   /* ---------- Robust sizing for iPhone landscape ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -120,15 +194,100 @@
   let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
   if (skinIndex === -1) skinIndex = 0;
 
+  function setSkinById(id){
+    const idx = skins.findIndex(s => s.id === id);
+    if (idx >= 0){
+      skinIndex = idx;
+      try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
+      updateCharBtnLabel();
+      markSelectedTile();
+    }
+  }
   function nextSkin(){
     skinIndex = (skinIndex + 1) % skins.length;
     localStorage.setItem('stary_bird_skin', skins[skinIndex].id);
     updateCharBtnLabel();
+    markSelectedTile();
   }
   function updateCharBtnLabel(){
     charBtn.textContent = `Change Character (${skins[skinIndex].name})`;
   }
   updateCharBtnLabel();
+
+  /* ----------------------- Character Modal ----------------------- */
+  function openCharModal(){
+    // build once
+    if (!charGrid.dataset.built){
+      buildCharGrid();
+      charGrid.dataset.built = '1';
+    }
+    charModal.classList.add('show');
+    charModal.setAttribute('aria-hidden','false');
+  }
+  function closeCharModal(){
+    charModal.classList.remove('show');
+    charModal.setAttribute('aria-hidden','true');
+  }
+  function buildCharGrid(){
+    charGrid.innerHTML = '';
+    skins.forEach(skin => {
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'tile';
+      tile.dataset.skin = skin.id;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb';
+
+      if (skin.type === 'image' && skin.img){
+        const img = document.createElement('img');
+        img.src = skin.img.src;
+        img.alt = skin.name;
+        thumb.appendChild(img);
+      } else {
+        // draw a small preview on a canvas
+        const c = document.createElement('canvas');
+        c.width = 84; c.height = 84;
+        const cx = c.getContext('2d');
+        cx.imageSmoothingEnabled = true;
+        cx.imageSmoothingQuality = 'high';
+        cx.translate(42,42);
+        cx.fillStyle = (skin.color || '#9fc2ff');
+
+        if (skin.shape === 'diamond'){
+          cx.beginPath();
+          cx.moveTo(0,-28); cx.lineTo(28,0); cx.lineTo(0,28); cx.lineTo(-28,0); cx.closePath();
+          cx.fill();
+        } else { // circle
+          cx.beginPath(); cx.arc(0,0, 28, 0, Math.PI*2); cx.fill();
+        }
+        thumb.appendChild(c);
+      }
+
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = skin.name;
+
+      tile.appendChild(thumb);
+      tile.appendChild(label);
+      tile.addEventListener('click', () => { setSkinById(skin.id); closeCharModal(); });
+
+      charGrid.appendChild(tile);
+    });
+    markSelectedTile();
+  }
+  function markSelectedTile(){
+    const tiles = charGrid.querySelectorAll('.tile');
+    tiles.forEach(t => t.classList.remove('selected'));
+    const current = charGrid.querySelector(`.tile[data-skin="${skins[skinIndex].id}"]`);
+    if (current) current.classList.add('selected');
+  }
+  charBtn.addEventListener('click', e => {
+    e.preventDefault();
+    if (!state.playing) openCharModal(); // only when not playing
+    else nextSkin(); // fallback: cycle during play if needed
+  });
+  charModal.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeCharModal(); });
 
   /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -136,8 +295,6 @@
   const lerp  = (a,b,t)=> a + (b-a)*t;
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
-
-  const COIN_KEY = 'stary_bird_coins';
 
   const SETTINGS = {
     speedBase: isMobile ? 3.6 : 4.2,
@@ -151,10 +308,7 @@
     doubleProb: 0.10,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000,        // 1s freeze before respawn
-
-    // Currency tuning
-    coinPerOrb: 1                // coins gained per orb
+    respawnDelayMs: 1000        // 1s freeze before respawn
   };
 
   /* ----------------------- Game State ----------------------- */
@@ -177,10 +331,7 @@
 
     // Death pause flags
     deathPause:false,
-    deathTimer:0,
-
-    // Currency
-    coins: Number(localStorage.getItem(COIN_KEY) || 0)
+    deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -206,7 +357,6 @@
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
-  charBtn.addEventListener('click', e => { e.preventDefault(); nextSkin(); });
 
   /* ----------------------- World ----------------------- */
   function addPipe(){
@@ -298,12 +448,11 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // Shows coins in HUD as well
-    hud.textContent = `${state.score} • HI ${state.hi} • ⦿ ${state.coins}`;
+    // Show character button only when not playing (start/death screens)
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
-  /* ----------------------- Trail colors ----------------------- */
+  /* ----------------------- Trail (discrete milestones) ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -376,7 +525,7 @@
       });
     }
     state.shake = 10;
-    state.flash = 0.5;
+    state.flash = 0.5; // keep flash ONLY for death/explosion
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -432,40 +581,38 @@
         }
       }
 
+      // Physics
       p.vy += state.gravity * step;
       p.vy = clamp(p.vy, -9, state.maxVy);
       p.y  += p.vy * step;
       p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
       p.rot = lerp(p.rot, p.targetRot, 0.2);
 
+      // Spawn & scroll
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
+      // Score & collisions
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
       if (!state.dead && hitBounds()) die();
 
-      // Orb pickup → +2 score (as before) + coins (new)
+      // Orb pickup (+2 score, sparkle) — removed milestone flash bump to stop random screen flashes
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
             const dx = p.x - o.x, dy = p.y - o.y;
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
               o.taken = true;
-
-              // score effect stays
               state.score += 2;
-              if ([10,25,50].includes(state.score)) state.flash = Math.min(0.5, state.flash + 0.35);
+              // (removed) flash bump on milestones to avoid unintended full-screen flashes
+              // if ([10,25,50].includes(state.score)) state.flash = Math.min(0.5, state.flash + 0.35);
 
-              // coins!
-              state.coins += SETTINGS.coinPerOrb;
-              try { localStorage.setItem(COIN_KEY, String(state.coins)); } catch(e){}
-
-              // coin burst particles (gold)
+              // Keep nice cyan sparkle
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
@@ -473,14 +620,10 @@
                   x:o.x, y:o.y,
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0.02, spin:0,
-                  life, maxLife: life,
-                  r: Math.random()*2+1.6,
-                  color:'#ffd54a'
+                  g:0, spin:0,
+                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
                 });
               }
-              // small HUD flash
-              state.flash = Math.min(0.5, state.flash + 0.15);
             }
           }
         }
@@ -626,7 +769,7 @@
           ctx.beginPath();
           ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
           ctx.fill();
-        } else { // circle
+        } else {
           ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
         }
       } else {
@@ -645,8 +788,8 @@
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
-    // HUD shows coins
-    hud.textContent = `${state.score} • HI ${state.hi} • ⦿ ${state.coins}`;
+    // HUD
+    hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
   /* ----------------------- Boot ----------------------- */
