@@ -4,56 +4,22 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Stary Bird</title>
-<meta name="theme-color" content="#0a0f17">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
-  :root { color-scheme: light dark; }
-  html, body {
-    margin:0; padding:0; height:100%;
-    background:#07090d; color:#eaf2ff;
-    font:14px/1.5 system-ui, Segoe UI, Roboto, Arial, sans-serif;
-  }
-  body {
-    overflow:hidden; overscroll-behavior:none; touch-action:none;
-    -webkit-user-select:none; -webkit-touch-callout:none;
-  }
-
-  .stage { position:fixed; inset:0; width:100vw; height:100svh; background:transparent; }
+  html, body { margin:0; padding:0; height:100%; background:#07090d; color:#eaf2ff; font:14px/1.5 system-ui,sans-serif; }
+  body { overflow:hidden; overscroll-behavior:none; touch-action:none; }
+  .stage { position:fixed; inset:0; width:100vw; height:100svh; }
   #game  { position:absolute; left:0; top:0; width:100%; height:100%; display:block;
-           background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none; }
-
-  .hud{
-    position:absolute;
-    right:calc(12px + env(safe-area-inset-right));
-    top:  calc(12px + env(safe-area-inset-top));
-    background:rgba(255,255,255,.08);
-    padding:6px 10px; border-radius:10px;
-    font-weight:800; letter-spacing:.06em; z-index:3;
-  }
-  .controls{
-    position:absolute;
-    left:calc(12px + env(safe-area-inset-left));
-    top: calc(12px + env(safe-area-inset-top));
-    opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
-  }
+           background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); }
+  .hud{ position:absolute; right:18px; top:18px; background:rgba(255,255,255,.08);
+        padding:6px 10px; border-radius:10px; font-weight:800; letter-spacing:.06em; z-index:3; }
+  .controls{ position:absolute; left:18px; top:18px; opacity:.6; font-weight:700; color:#c9d8ff; z-index:2; }
   .center{ position:absolute; inset:0; display:grid; place-items:center;
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
-
-  /* Change Character button (safe-area aware) */
-  .charbtn{
-    position:absolute;
-    left:calc(12px + env(safe-area-inset-left));
-    bottom:calc(12px + env(safe-area-inset-bottom));
-    z-index:4;
-    padding:10px 14px; border-radius:12px;
-    border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421);
-    color:#eaf2ff; font-weight:800; letter-spacing:.05em;
-    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
-    -webkit-tap-highlight-color:transparent;
-  }
+  .charbtn{ position:absolute; left:18px; bottom:18px; z-index:4; padding:10px 14px; border-radius:12px;
+            border:1px solid #2a3a5a; background:linear-gradient(180deg,#111827,#0d1421);
+            color:#eaf2ff; font-weight:800; letter-spacing:.05em;
+            box-shadow:0 8px 28px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06);}
 </style>
 </head>
 <body>
@@ -64,586 +30,200 @@
     <div class="center" id="msg">TAP / SPACE TO START</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
-
 <script>
 (() => {
-  'use strict';
-
+  // --- Setup
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d', { alpha: true });
+  const ctx = canvas.getContext('2d');
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
 
-  /* ---------- Robust sizing for iPhone landscape ---------- */
-  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  // --- Responsive sizing
   function sizeToViewport() {
-    const vv = window.visualViewport;
-    const w = Math.floor(vv ? vv.width  : window.innerWidth);
-    const h = Math.floor(vv ? vv.height : window.innerHeight);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-    const cw = Math.max(1, Math.floor(w * DPR));
-    const ch = Math.max(1, Math.floor(h * DPR));
-    canvas.width = cw; canvas.height = ch;
-    ctx.setTransform(DPR,0,0,DPR,0,0);
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = w+'px'; canvas.style.height = h+'px';
   }
-  new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
-  window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
-  sizeToViewport();
+  window.addEventListener('resize', sizeToViewport); sizeToViewport();
 
-  // Prevent double-tap zoom on iOS
-  let lastTouchEnd = 0;
-  document.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) e.preventDefault();
-    lastTouchEnd = now;
-  }, {passive:false});
-
-  /* ----------------------- Skins ----------------------- */
-  const makeImg = (src) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.crossOrigin = 'anonymous';
-    img.src = src;
-    img.onerror = () => { img._error = true; };
-    return img;
-  };
-
+  // --- Skins (no external assets)
   const skins = [
-    { id:'logo',   type:'image', name:'Logo',   img: makeImg('assets/logo.png') },
-    { id:'diamond',type:'shape', name:'Diamond',shape:'diamond', color:'#9fc2ff' },
-    { id:'circle', type:'shape', name:'Circle', shape:'circle',  color:'#6aa0ff' }
+    { id:'diamond', name:'Diamond', draw: (ctx,sz) => {
+      ctx.fillStyle = "#9fc2ff";
+      ctx.beginPath();
+      ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
+      ctx.fill();
+    }},
+    { id:'circle', name:'Circle', draw: (ctx,sz) => {
+      ctx.fillStyle = "#6aa0ff";
+      ctx.beginPath();
+      ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
+    }},
+    { id:'star', name:'Star', draw: (ctx,sz) => {
+      ctx.fillStyle = "#ffd54a";
+      ctx.save();
+      ctx.rotate(-Math.PI/2);
+      for(let i=0;i<5;i++){
+        ctx.lineTo(Math.cos(i * 2*Math.PI/5)*sz*0.45, Math.sin(i * 2*Math.PI/5)*sz*0.45);
+        ctx.lineTo(Math.cos((i+0.5) * 2*Math.PI/5)*sz*0.18, Math.sin((i+0.5) * 2*Math.PI/5)*sz*0.18);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }}
   ];
-
-  let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
-  if (skinIndex === -1) skinIndex = 0;
-
-  function nextSkin(){
-    skinIndex = (skinIndex + 1) % skins.length;
-    localStorage.setItem('stary_bird_skin', skins[skinIndex].id);
-    updateCharBtnLabel();
-  }
-  function updateCharBtnLabel(){
+  let skinIndex = Number(localStorage.getItem('stary_bird_skin_index'))||0;
+  function nextSkin() {
+    skinIndex = (skinIndex+1)%skins.length;
+    localStorage.setItem('stary_bird_skin_index', skinIndex);
     charBtn.textContent = `Change Character (${skins[skinIndex].name})`;
   }
-  updateCharBtnLabel();
+  charBtn.onclick = nextSkin;
+  charBtn.textContent = `Change Character (${skins[skinIndex].name})`;
 
-  /* ----------------------- Helpers ----------------------- */
-  const rand  = (a,b)=> Math.random()*(b-a)+a;
-  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-  const lerp  = (a,b,t)=> a + (b-a)*t;
-
-  // Detect mobile-ish (also catches small viewports)
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
-
-  // Difficulty & pacing knobs
-  const SETTINGS = {
-    speedBase: isMobile ? 3.6 : 4.2,   // mobile starts slower
-    speedMax:  isMobile ? 8.2 : 8.8,   // lower cap on mobile
-    accelEarly: 0.00025,               // first 3s ease-in (per ms)
-    accelMain:  0.00060,               // after 3s (per ms)
-    gapMin: 132,                       // do not shrink below this
-    gapShrinkPerMs: 0.0035,            // gap shrink rate
-    maxSlopePxPerSec: 240,             // reachability guard (px vertical per second)
-    movingProb: 0.14,                  // moving gate chance
-    doubleProb: 0.10,                  // double pipe chance
-    doubleSpacing: 130,                // spacing between double pipes
-    movingAmpMax: 24,                  // limit sine amplitude
-    respawnDelayMs: 1000               // wait after explosion before reset
-  };
-
-  /* ----------------------- Game State ----------------------- */
+  // --- Game state
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
-    t:0, shake:0, flash:0,
-    gravity:0.33, thrust:0.6, maxVy:9,
-    speed: SETTINGS.speedBase, gap:150,
-    spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
-    maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
-    orbs:[], pipes:[], particles:[],
-
-    // Trail palette (discrete)
-    trailBase:   '#cfe3ff', // 0–9
-    trailBlue:   '#4ab7ff', // 10–24
-    trailPurple: '#b06cff', // 25–49
-    trailGold:   '#ffd54a', // 50+
-
-    startTime:0,
-    respawnMs:0,            // countdown after explosion
-    deathPos:null           // where the explosion happens
+    pipes:[], v:0, y:canvas.height/2, x:canvas.width/3, t:0, gap:150, speed:3.7, spawn:0, respawn:0,
   };
 
-  const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
-
-  /* ----------------------- Input ----------------------- */
-  function startIfNeeded(){
-    if (!state.playing && !state.dead){
-      start();
-    } else if (state.dead && state.respawnMs<=0){
-      restart();
-    }
+  // --- Controls
+  let hold = false;
+  function startIfNeeded() {
+    if (!state.playing && !state.dead) start();
+    else if (state.dead && state.respawn<=0) restart();
   }
   window.addEventListener('keydown', e => {
     if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = true; startIfNeeded();
+      e.preventDefault(); hold = true; startIfNeeded();
     }
-  }, {passive:false});
+  });
   window.addEventListener('keyup', e => {
     if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = false;
-      if (state.dead && state.respawnMs<=0) restart();
+      e.preventDefault(); hold = false;
+      if (state.dead && state.respawn<=0) restart();
     }
-  }, {passive:false});
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
-  canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && state.respawnMs<=0) restart(); }, {passive:false});
-  charBtn.addEventListener('click', e => { e.preventDefault(); nextSkin(); });
+  });
+  canvas.addEventListener('touchstart', e=>{ e.preventDefault(); hold=true; startIfNeeded(); },{passive:false});
+  canvas.addEventListener('touchend',   e=>{ e.preventDefault(); hold=false; if(state.dead&&state.respawn<=0)restart(); },{passive:false});
 
-  /* ----------------------- World ----------------------- */
-  function addPipe(){
-    const h = canvas.clientHeight, margin = 60;
+  // --- Game functions
+  function reset() {
+    state.playing=false; state.dead=false; state.score=0; state.pipes=[];
+    state.v=0; state.gap=150; state.speed=3.7; state.y=canvas.height/2; state.x=canvas.width/3; state.t=0; state.spawn=30; state.respawn=0;
+    msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; charBtn.style.display='';
+    hud.textContent = `0 • HI ${state.hi}`;
+  }
+  function start() {
+    if(state.dead) return;
+    state.playing=true; msg.style.display='none'; charBtn.style.display='none';
+  }
+  function restart() { reset(); start(); }
 
-    // spawn timer measured in "frame units"; use to estimate time till next
-    const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    const baseMax = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, baseMax));              // pseudo-frames
-    const timeToNext = state.spawn * (16.67 / 1000);               // seconds until next spawn
-
-    const mid = h/2;
-    const prev = state.lastGapY ?? mid;
-    const safeTop = margin + state.gap/2;
-    const safeBot = h - margin - state.gap/2;
-
-    // Reachability guard: how far the gap may move vs. previous
-    const allowedDelta = Math.min(SETTINGS.maxSlopePxPerSec * timeToNext, 170);
-    let proposed = prev + rand(-allowedDelta, +allowedDelta);
-
-    const wobble = rand(-8, 8);
-    const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 70;
-
-    // Specials (safer)
-    const isMoving = Math.random() < SETTINGS.movingProb;
-    const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
-
-    // Moving amplitude is limited further when gap already tight
-    const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
-    const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
-
-    // Primary pipe
-    state.pipes.push({
-      x: canvas.clientWidth + 40,
-      baseGapY: gapY,
-      w,
-      passed:false,
-      type: isMoving ? 'moving' : 'normal',
-      amp,
-      speed: isMoving ? rand(0.8, 1.2) : 0,
-      phase: Math.random()*Math.PI*2,
-      doubleGap:false
-    });
-
-    // Optional double pipe (slightly tighter & farther)
-    if (isDouble){
-      state.pipes.push({
-        x: canvas.clientWidth + 40 + w + SETTINGS.doubleSpacing,
-        baseGapY: clamp(gapY + rand(-24, 24), safeTop, safeBot),
-        w,
-        passed:false,
-        type:'normal',
-        amp:0, speed:0, phase:0,
-        doubleGap:true
-      });
-    }
-
-    state.lastGapY = gapY;
-    state.lastPipeX = canvas.clientWidth + 40;
-
-    // Orb near the center of the gap
-    if (Math.random() < 0.55){
-      state.orbs.push({ x: canvas.clientWidth + 40 + w/2, y: gapY, r:8, taken:false, t0: state.t });
-    }
+  // --- Pipe functions
+  function addPipe() {
+    const margin = 60;
+    const prev = (state.pipes.length ? state.pipes[state.pipes.length-1].gy : canvas.height/2);
+    const gapY = Math.max(margin+state.gap/2, Math.min(canvas.height-margin-state.gap/2, prev + (Math.random()-0.5)*90 ));
+    state.pipes.push({ x:canvas.width+60, w:60, gy:gapY });
+    state.spawn = 110 + Math.random()*60;
   }
 
-  const currentGapY = (pipe) => {
-    if (pipe.type === 'moving'){
-      return pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp;
-    }
-    return pipe.baseGapY;
-  };
-
-  /* ----------------------- Flow ----------------------- */
-  function reset(){
-    state.playing=false; state.dead=false; state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
-    state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
-    state.spawn=30; state.t=0; state.shake=0; state.flash=0;
-    state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
-    state.respawnMs=0; state.deathPos=null;
-    p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
-    if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
-    updateUI();
-  }
-  function start(){
-    if (state.dead) return;
-    state.playing=true;
-    state.startTime = performance.now();
-    if (msg) msg.style.display = 'none';
-    updateUI();
-  }
-  function restart(){ reset(); start(); }
-
-  function updateUI(){
-    // Show character button only when not playing (start/death screens)
-    charBtn.style.display = (!state.playing ? '' : 'none');
-  }
-
-  /* ----------------------- Trail (discrete milestones) ----------------------- */
-  function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
-    return state.trailBase;
-  }
-
-  function addTrail(){
-    const c = colorForScore(state.score);
-    for (let i=0;i<3;i++){
-      const life = Math.random()*14+24;
-      state.particles.push({
-        type:'spark',
-        x: p.x - 26 + Math.random()*10,
-        y: p.y + Math.random()*10 - 5,
-        vx: -state.speed*0.6 + (Math.random()*-0.6),
-        vy: (Math.random()-.5)*1.3,
-        g: 0, spin:0, a:1,
-        life,
-        maxLife: life,
-        r: Math.random()*2+2,
-        color: c
-      });
-    }
-  }
-
-  /* ----------------------- Collisions ----------------------- */
-  function hitPipe(pipe){
-    const gy = currentGapY(pipe);
-    // Doubles only 6px tighter (fairer)
-    const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
-    if (p.x + p.w*0.35 > pipe.x && p.x - p.w*0.35 < pipe.x + pipe.w){
-      if (p.y - p.h*0.35 < gy - half || p.y + p.h*0.35 > gy + half) return true;
+  // --- Collision
+  function hitPipe(pipe) {
+    const half = state.gap/2;
+    if (state.x+30 > pipe.x && state.x-30 < pipe.x+pipe.w) {
+      if (state.y-30 < pipe.gy-half || state.y+30 > pipe.gy+half) return true;
     }
     return false;
   }
-  function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
+  function hitBounds() { return (state.y < 0) || (state.y > canvas.height); }
 
-  /* ----------------------- Explosion ----------------------- */
-  function explode(px, py){
-    const trail = colorForScore(state.score);
-    // Try to get a skin base color fallback
-    let skinColor = '#cfe3ff';
-    const skin = skins[skinIndex];
-    if (skin && skin.type==='shape' && skin.color) skinColor = skin.color;
-
-    // Sparks (round)
-    for (let i=0;i<28;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.2 + Math.random()*3.2;
-      const life = 24 + Math.random()*18;
-      state.particles.push({
-        type:'spark',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0, a:1,
-        life, maxLife:life,
-        r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff')
-      });
-    }
-    // Shards (rects)
-    for (let i=0;i<16;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.0 + Math.random()*3.8;
-      const life = 26 + Math.random()*22;
-      state.particles.push({
-        type:'shard',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
-        g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1), a:1,
-        life, maxLife:life,
-        w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI,
-        color: (Math.random()<0.5 ? skinColor : trail)
-      });
-    }
-    state.shake = 10;
-    state.flash = 0.5;
-  }
-
-  /* ----------------------- Loop (TIME-BASED) ----------------------- */
-  let last = performance.now();
-  function loop(t){
-    const dt = Math.min(32, t - last); last = t;
-    const step = dt / 16.67; // normalize to "60fps frames"
+  // --- Loop
+  function loop(ts) {
+    const dt = 16.67; // fixed for simplicity
     state.t += dt;
-
-    // During death pause: only animate particles & countdown, freeze world scroll
-    if (state.dead){
-      if (state.respawnMs > 0){
-        state.respawnMs -= dt;
-        // particles keep animating during pause
-        for (const prt of state.particles){
-          prt.vy += (prt.g||0) * step;
-          prt.x += prt.vx * step;
-          prt.y += prt.vy * step;
-          if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-          prt.life -= step;
-        }
-        while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-        state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-        draw();
-        requestAnimationFrame(loop);
-        // Auto-reset when the timer finishes
-        if (state.respawnMs <= 0){
-          // Save HI already done in die(); just show start screen again
-          reset();
-        }
-        return;
-      }
+    // Death pause (show explosion for a bit)
+    if(state.dead && state.respawn>0) {
+      state.respawn -= dt;
+      if(state.respawn<=0) reset();
+      draw();
+      requestAnimationFrame(loop); return;
     }
-
-    // Micro-acceleration & difficulty over real time
-    if (state.playing && !state.dead){
-      const sinceStart = Math.max(0, t - state.startTime);
-      const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
-      state.speed = Math.min(SETTINGS.speedMax, state.speed + accel * dt);
-      state.gap   = Math.max(SETTINGS.gapMin, state.gap - SETTINGS.gapShrinkPerMs * dt);
+    // Main game logic
+    if(state.playing && !state.dead) {
+      if(hold) state.v -= 0.6;
+      state.v += 0.34;
+      if(state.v > 9) state.v = 9;
+      if(state.v < -9) state.v = -9;
+      state.y += state.v;
+      // Pipes
+      state.spawn -= 1;
+      if(state.spawn<=0) addPipe();
+      state.pipes.forEach(pipe=>pipe.x -= state.speed);
+      // Remove old
+      while(state.pipes.length && state.pipes[0].x+state.pipes[0].w<-40) state.pipes.shift();
+      // Score
+      state.pipes.forEach(pipe=>{
+        if(!pipe.passed && state.x > pipe.x+pipe.w) { pipe.passed=true; state.score++; }
+      });
+      // Collisions
+      for(const pipe of state.pipes) if(hitPipe(pipe)) die();
+      if(!state.dead && hitBounds()) die();
+      // Difficulty
+      state.speed = Math.min(8.2, state.speed+0.0004*dt);
+      state.gap   = Math.max(100, state.gap-0.002*dt);
     }
-
-    if (state.playing && !state.dead){
-      if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
-
-      // Orb magnetism (vertical only), time-based
-      for (const o of state.orbs){
-        if (o.taken) continue;
-        const dx = p.x - o.x, dy = p.y - o.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 < 100*100){
-          const pull = 0.6 * step; // gentle pull
-          p.vy += clamp((o.y - p.y) * pull / 100, -0.8*step, 0.8*step);
-        }
-      }
-
-      // Physics time-based
-      p.vy += state.gravity * step;
-      p.vy = clamp(p.vy, -9, state.maxVy);
-      p.y  += p.vy * step;
-      p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
-      p.rot = lerp(p.rot, p.targetRot, 0.2);
-
-      // Spawn & scroll time-based
-      state.spawn -= step;
-      if (state.spawn <= 0) addPipe();
-      for (const pipe of state.pipes) pipe.x -= state.speed * step;
-      for (const orb of state.orbs)  orb.x  -= state.speed * step;
-
-      // Score & collisions
-      for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
-        if (hitPipe(pipe)) { die(); break; }
-      }
-      if (!state.dead && hitBounds()) die();
-
-      // Orb pickup
-      if (!state.dead){
-        for (const o of state.orbs){
-          if (!o.taken){
-            const dx = p.x - o.x, dy = p.y - o.y;
-            if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true; state.score += 2;
-              if ([10,25,50].includes(state.score)) state.flash = Math.min(0.5, state.flash + 0.35);
-              for (let i=0;i<12;i++){
-                const life = Math.random()*12+18;
-                state.particles.push({
-                  type:'spark',
-                  x:o.x, y:o.y,
-                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
-                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0, a:1,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
-                });
-              }
-            }
-          }
-        }
-      }
-
-      // Cleanup
-      while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
-      while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
-
-      // Particles
-      for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x += prt.vx * step;
-        prt.y += prt.vy * step;
-        if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        prt.life -= step;
-      }
-      while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-    }
-
-    state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
     draw();
     requestAnimationFrame(loop);
   }
 
-  /* ----------------------- Death: explosion + delayed respawn ----------------------- */
-  function die(){
-    if (state.dead) return;
+  // --- Die
+  function die() {
+    if(state.dead) return;
     state.dead = true; state.playing = false;
     state.hi = Math.max(state.hi, state.score);
-    try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-    state.deathPos = { x: p.x, y: p.y };
-    explode(p.x, p.y);
-    state.respawnMs = SETTINGS.respawnDelayMs;
-    // Hide start text until we actually reset
-    if (msg) msg.style.display = 'none';
-    // Hide change character button during the pause
-    charBtn.style.display = 'none';
+    localStorage.setItem('stary_bird_hi', state.hi);
+    state.respawn = 800;
+    charBtn.style.display='none';
+    msg.style.display='none';
   }
 
-  /* ----------------------- Render ----------------------- */
-  function draw(){
-    const sx = (Math.random()*2-1)*state.shake;
-    const sy = (Math.random()*2-1)*state.shake;
-
-    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    // Parallax starfield (two layers)
-    ctx.globalAlpha = 0.06;
-    for (let i=0;i<70;i++){
-      const x = (i*130 - (state.t*0.035)%130);
-      const y = 30 + (i*47) % (canvas.clientHeight-60);
-      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
-    }
+  // --- Draw
+  function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // Starfield
     ctx.globalAlpha = 0.12;
-    for (let i=0;i<40;i++){
-      const x = (i*220 - (state.t*0.06)%220);
-      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
-      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
+    for(let i=0;i<60;i++){
+      ctx.fillStyle="#bcd1ff";
+      ctx.fillRect((i*110-(state.t*0.035)%110),30+(i*47)%(canvas.height-60),2,2);
     }
     ctx.globalAlpha = 1;
-
-    ctx.save(); ctx.translate(sx, sy);
-
     // Pipes
-    for (const pipe of state.pipes){
-      const gy = (pipe.type==='moving')
-        ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
-        : pipe.baseGapY;
-      const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
-      const x = pipe.x, w = pipe.w;
-      const yTop = 0, hTop = gy - half;
-      const yBot = gy + half, hBot = canvas.clientHeight - yBot;
-      ctx.fillStyle = "#12324f";
-      if (hTop>0) ctx.fillRect(x, yTop, w, hTop);
-      if (hBot>0) ctx.fillRect(x, yBot, w, hBot);
-      ctx.fillStyle = "#1a476f";
-      if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
-      if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
-    }
-
-    // Orbs with glow
-    for (const o of state.orbs){
-      if (o.taken) continue;
-      const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
-      const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*6*pulse);
-      grd.addColorStop(0, 'rgba(119,234,255,0.35)');
-      grd.addColorStop(1, 'rgba(119,234,255,0)');
-      ctx.fillStyle = grd;
-      ctx.beginPath(); ctx.arc(o.x, o.y, o.r*6*pulse, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(o.x, o.y, o.r*pulse, 0, Math.PI*2);
-      ctx.fillStyle = "#77eaff"; ctx.fill();
-      ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
-    }
-
-    // Particles (sparks & shards)
-    for (const prt of state.particles){
-      const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
-      if (a <= 0) continue;
-      ctx.globalAlpha = a;
-      ctx.fillStyle = prt.color;
-
-      if (prt.type === 'shard'){
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
-        ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
-        ctx.restore();
-      } else {
-        // spark
-        ctx.beginPath(); ctx.arc(prt.x, prt.y, prt.r||2, 0, Math.PI*2); ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
-
-    // Player — draw only when alive (hide during death pause to showcase explosion)
-    if (!state.dead){
-      ctx.save();
-      const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
-      ctx.translate(p.x, p.y + idleOffset);
-      ctx.rotate(p.rot);
-      const sz = 54;
-      const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
-      ctx.scale(1 + sAmt, 1 - sAmt);
-
-      // soft glow (no border)
-      ctx.globalAlpha = 0.25;
-      ctx.filter = 'blur(4px)';
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.ellipse(0, 0, sz*0.45, sz*0.45, 0, 0, Math.PI*2); ctx.fill();
-      ctx.filter = 'none'; ctx.globalAlpha = 1;
-
-      const skin = skins[skinIndex];
-      if (skin.type === 'image' && skin.img && !skin.img._error){
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(skin.img, -sz/2, -sz/2, sz, sz);
-      } else if (skin.type === 'shape'){
-        ctx.fillStyle = skin.color || '#9fc2ff';
-        if (skin.shape === 'diamond'){
-          ctx.beginPath();
-          ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-          ctx.fill();
-        } else { // circle
-          ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
-        }
-      } else {
-        // fallback (diamond)
-        ctx.fillStyle = '#9fc2ff';
-        ctx.beginPath();
-        ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
+    ctx.fillStyle="#12324f";
+    state.pipes.forEach(pipe=>{
+      const half=state.gap/2, x=pipe.x,w=pipe.w, yTop=0,hTop=pipe.gy-half, yBot=pipe.gy+half,hBot=canvas.height-(pipe.gy+half);
+      if(hTop>0) ctx.fillRect(x,yTop,w,hTop);
+      if(hBot>0) ctx.fillRect(x,yBot,w,hBot);
+    });
+    // Player
+    ctx.save();
+    ctx.translate(state.x,state.y);
+    ctx.rotate(state.v/22);
+    const sz=54;
+    // Glow
+    ctx.globalAlpha=0.26; ctx.filter='blur(4px)';
+    ctx.beginPath(); ctx.ellipse(0, 0, sz*0.45, sz*0.45, 0, 0, Math.PI*2); ctx.fillStyle='#fff'; ctx.fill();
+    ctx.globalAlpha=1; ctx.filter='none';
+    // Character
+    ctx.beginPath();
+    skins[skinIndex].draw(ctx, sz);
     ctx.restore();
-
-    if (state.flash>0){
-      ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
-      ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
-    }
-
     // HUD
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
-  /* ----------------------- Boot ----------------------- */
+  // --- Boot
   reset();
   requestAnimationFrame(loop);
 })();
