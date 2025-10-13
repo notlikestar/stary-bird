@@ -159,7 +159,7 @@
     <canvas id="game"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
-    <div class="center" id="msg">TAP / SPACE TO START</div>
+    <div class="center" id="msg">STAR-T</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
 
     <!-- Music controls -->
@@ -318,7 +318,8 @@
 
   const skins = [
     { id:'logo',   type:'image', name:'Logo',   img: makeImg('assets/logo.png') },
-    { id:'hat',    type:'image', name:'Hat',    img: makeImg('assets/hatcharicter.png') },  
+    { id:'hat',    type:'image', name:'Hat',    img: makeImg('assets/hatcharicter.png') },
+    { id:'hat',    type:'image', name:'Hat',    img: makeImg('assets/seiji.png') },  
   ];
 
   let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
