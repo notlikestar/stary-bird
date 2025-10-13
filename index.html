@@ -37,10 +37,23 @@
     top: calc(12px + env(safe-area-inset-top));
     opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
   }
-
   .center{ position:absolute; inset:0; display:grid; place-items:center;
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
+
+  /* Change Character button (safe-area aware) */
+  .charbtn{
+    position:absolute;
+    left:calc(12px + env(safe-area-inset-left));
+    bottom:calc(12px + env(safe-area-inset-bottom));
+    z-index:4;
+    padding:10px 14px; border-radius:12px;
+    border:1px solid #2a3a5a;
+    background:linear-gradient(180deg,#111827,#0d1421);
+    color:#eaf2ff; font-weight:800; letter-spacing:.05em;
+    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    -webkit-tap-highlight-color:transparent;
+  }
 </style>
 </head>
 <body>
@@ -48,7 +61,8 @@
     <canvas id="game"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
-    <div class="center" id="msg">TAP / SPACE TO START</div>
+    <div class="center" id="msg">STAR-T</div>
+    <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
 <script>
@@ -59,6 +73,7 @@
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
+  const charBtn = document.getElementById('charBtn');
 
   /* ---------- Robust sizing for iPhone landscape ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -86,14 +101,36 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Logo (player graphic) ----------------------- */
-  const logoImg = new Image();
-  logoImg.decoding = 'async';
-  logoImg.loading = 'eager';
-  logoImg.crossOrigin = 'anonymous';
-  logoImg.src = 'assets/logo.png';
-  let logoReady = false;
-  logoImg.onload = () => { logoReady = true; };
+  /* ----------------------- Skins ----------------------- */
+  const makeImg = (src) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.crossOrigin = 'anonymous';
+    img.src = src;
+    img.onerror = () => { img._error = true; };
+    return img;
+  };
+
+  const skins = [
+    { id:'logo',   type:'image', name:'Logo',   img: makeImg('assets/logo.png') },
+    { id:'diamond',type:'shape', name:'Diamond',shape:'diamond', color:'#9fc2ff' },
+    { id:'circle', type:'shape', name:'Circle', shape:'circle',  color:'#6aa0ff' }
+    // Add more: { id:'alt1', type:'image', name:'Alt 1', img: makeImg('assets/alt1.png') }
+  ];
+
+  let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
+  if (skinIndex === -1) skinIndex = 0;
+
+  function nextSkin(){
+    skinIndex = (skinIndex + 1) % skins.length;
+    localStorage.setItem('stary_bird_skin', skins[skinIndex].id);
+    updateCharBtnLabel();
+  }
+  function updateCharBtnLabel(){
+    charBtn.textContent = `Change Character (${skins[skinIndex].name})`;
+  }
+  updateCharBtnLabel();
 
   /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -116,7 +153,7 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
     trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailGold:'#ffd54a',
-    startTime:0 // for micro-acceleration window
+    startTime:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -141,13 +178,14 @@
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead) restart(); }, {passive:false});
+  charBtn.addEventListener('click', e => { e.preventDefault(); nextSkin(); });
 
   /* ----------------------- World ----------------------- */
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, baseMax));
+    state.spawn = Math.floor(rand(baseMin, baseMax)); // measured in "frame units"
     const dx = state.spawn * state.speed;
 
     const mid = h/2;
@@ -164,11 +202,9 @@
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
     const w = 70;
 
-    // Decide pattern: moving gate or double pipes
     const isMoving = Math.random() < 0.18;
     const isDouble = !isMoving && Math.random() < 0.12;
 
-    // Primary pipe
     state.pipes.push({
       x: canvas.clientWidth + 40,
       baseGapY: gapY,
@@ -180,7 +216,6 @@
       phase: Math.random()*Math.PI*2
     });
 
-    // Optional double: quick follow-up pipe with slightly smaller gap
     if (isDouble){
       state.pipes.push({
         x: canvas.clientWidth + 40 + w + 100,
@@ -189,19 +224,17 @@
         passed:false,
         type:'normal',
         amp:0, speed:0, phase:0,
-        doubleGap:true // render with slightly tighter gap
+        doubleGap:true
       });
     }
 
     state.lastGapY = gapY;
     state.lastPipeX = canvas.clientWidth + 40;
 
-    // orb near the center of the gap
     if (Math.random() < 0.55){
       state.orbs.push({ x: canvas.clientWidth + 40 + w/2, y: gapY, r:8, taken:false, t0: state.t });
     }
   }
-
   const currentGapY = (pipe) => {
     if (pipe.type === 'moving'){
       return pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp;
@@ -217,27 +250,34 @@
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
+    updateUI();
   }
   function start(){
     if (state.dead) return;
     state.playing=true;
     state.startTime = performance.now();
     if (msg) msg.style.display = 'none';
+    updateUI();
   }
   function restart(){ reset(); start(); }
 
-  /* ----------------------- Particles ----------------------- */
-  function addTrail(){
-    // Trail color: base <10, blend 10–25 (blue→gold), gold >=25
-    let c = state.trailBase;
-    if (state.score >= 25) c = state.trailGold;
-    else if (state.score >= 10) {
-      const t = clamp((state.score - 10) / 15, 0, 1);
-      c = lerpColor(state.trailBlue, state.trailGold, t);
-    }
+  function updateUI(){
+    // Show character button only when not playing (start/death screens)
+    charBtn.style.display = (!state.playing ? '' : 'none');
+  }
 
+  /* ----------------------- Trail ----------------------- */
+  function colorForScore(score){
+    if (score >= 25) return state.trailGold;
+    if (score >= 10) {
+      const t = Math.min(1, (score - 10) / 15);
+      return lerpColor(state.trailBlue, state.trailGold, t);
+    }
+    return state.trailBase;
+  }
+  function addTrail(){
+    const c = colorForScore(state.score);
     for (let i=0;i<3;i++){
       const life = Math.random()*14+24;
       state.particles.push({
@@ -264,18 +304,18 @@
   }
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  /* ----------------------- Loop ----------------------- */
+  /* ----------------------- Loop (TIME-BASED) ----------------------- */
   let last = performance.now();
   function loop(t){
     const dt = Math.min(32, t - last); last = t;
-    const dtNorm = dt / 16.67; // normalize to ~60fps
+    const step = dt / 16.67; // normalize to "60fps frames"
     state.t += dt;
 
-    // Micro-acceleration (ease-in) for first 3 seconds after start
+    // Micro-acceleration & difficulty over real time
     if (state.playing && !state.dead){
       const sinceStart = Math.max(0, t - state.startTime);
       if (sinceStart < 3000) {
-        state.speed = Math.min(9.5, state.speed + 0.0003 * dt); // gentle ease
+        state.speed = Math.min(9.5, state.speed + 0.0003 * dt);
       } else {
         state.speed = Math.min(9.5, state.speed + 0.0008 * dt);
       }
@@ -283,34 +323,40 @@
     }
 
     if (state.playing && !state.dead){
-      if (p.hold){ p.vy -= state.thrust; addTrail(); }
-      // Orb magnetism (vertical only)
+      if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
+
+      // Orb magnetism (vertical only), time-based
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
         const d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
-          const pull = 0.010 * dtNorm; // gentle pull
-          p.vy += clamp((o.y - p.y) * pull / 100, -0.8, 0.8);
+          const pull = 0.6 * step; // tuned for time-based motion
+          p.vy += clamp((o.y - p.y) * pull / 100, -0.8*step, 0.8*step);
         }
       }
 
-      p.vy += state.gravity; p.vy = clamp(p.vy, -9, state.maxVy); p.y += p.vy;
-      p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8); p.rot = lerp(p.rot, p.targetRot, 0.2);
+      // Physics time-based
+      p.vy += state.gravity * step;
+      p.vy = clamp(p.vy, -9, state.maxVy);
+      p.y  += p.vy * step;
+      p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
+      p.rot = lerp(p.rot, p.targetRot, 0.2);
 
-      state.spawn -= 1; if (state.spawn <= 0) addPipe();
+      // Spawn & scroll time-based
+      state.spawn -= step;
+      if (state.spawn <= 0) addPipe();
+      for (const pipe of state.pipes) pipe.x -= state.speed * step;
+      for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
-      for (const pipe of state.pipes) pipe.x -= state.speed;
-      for (const orb of state.orbs)  orb.x  -= state.speed;
-
+      // Score & collisions
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){
-          pipe.passed = true; state.score++;
-        }
+        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) die();
       }
       if (hitBounds()) die();
 
+      // Orb pickup
       for (const o of state.orbs){
         if (!o.taken){
           const dx = p.x - o.x, dy = p.y - o.y;
@@ -329,10 +375,12 @@
         }
       }
 
+      // Cleanup
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
-      for (const prt of state.particles){ prt.x += prt.vx; prt.y += prt.vy; prt.life--; }
+      // Particles
+      for (const prt of state.particles){ prt.x += prt.vx * step; prt.y += prt.vy * step; prt.life -= step; }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
     }
 
@@ -349,6 +397,7 @@
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
     if (msg) { msg.textContent = 'TAP / SPACE TO RESTART'; msg.style.display = ''; }
+    updateUI();
   }
 
   /* ----------------------- Render ----------------------- */
@@ -359,14 +408,12 @@
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
     // Parallax starfield (two layers)
-    // Layer A (far)
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
       const y = 30 + (i*47) % (canvas.clientHeight-60);
       ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
     }
-    // Layer B (nearer, slower vertical drift, slightly larger)
     ctx.globalAlpha = 0.12;
     for (let i=0;i<40;i++){
       const x = (i*220 - (state.t*0.06)%220);
@@ -377,9 +424,11 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // pipes
+    // Pipes
     for (const pipe of state.pipes){
-      const gy = currentGapY(pipe);
+      const gy = (pipe.type==='moving')
+        ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
+        : pipe.baseGapY;
       const half = (pipe.doubleGap ? (state.gap - 14) : state.gap) / 2;
       const x = pipe.x, w = pipe.w;
       const yTop = 0, hTop = gy - half;
@@ -392,24 +441,21 @@
       if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
     }
 
-    // orbs (glow pulse + core)
+    // Orbs with glow
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
-      // glow
       const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*6*pulse);
       grd.addColorStop(0, 'rgba(119,234,255,0.35)');
       grd.addColorStop(1, 'rgba(119,234,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath(); ctx.arc(o.x, o.y, o.r*6*pulse, 0, Math.PI*2); ctx.fill();
-
-      // core
       ctx.beginPath(); ctx.arc(o.x, o.y, o.r*pulse, 0, Math.PI*2);
       ctx.fillStyle = "#77eaff"; ctx.fill();
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // particles (fade using life/maxLife)
+    // Particles (fade using life/maxLife)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -419,27 +465,37 @@
     }
     ctx.globalAlpha = 1;
 
-    // player — logo with subtle glow, squash/stretch by vertical speed
+    // Player — draw based on selected skin (with subtle glow & stretch)
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
     const sz = 54;
-    const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18); // stretch amount
+    const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
     ctx.scale(1 + sAmt, 1 - sAmt);
 
-    // soft glow
+    // soft glow (no border)
     ctx.globalAlpha = 0.25;
     ctx.filter = 'blur(4px)';
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.ellipse(0, 0, sz*0.45, sz*0.45, 0, 0, Math.PI*2); ctx.fill();
     ctx.filter = 'none'; ctx.globalAlpha = 1;
 
-    if (logoReady){
+    const skin = skins[skinIndex];
+    if (skin.type === 'image' && skin.img && !skin.img._error){
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(logoImg, -sz/2, -sz/2, sz, sz);
+      ctx.drawImage(skin.img, -sz/2, -sz/2, sz, sz);
+    } else if (skin.type === 'shape'){
+      ctx.fillStyle = skin.color || '#9fc2ff';
+      if (skin.shape === 'diamond'){
+        ctx.beginPath();
+        ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
+        ctx.fill();
+      } else { // circle
+        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
+      }
     } else {
-      // fallback diamond
+      // fallback (diamond)
       ctx.fillStyle = '#9fc2ff';
       ctx.beginPath();
       ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
