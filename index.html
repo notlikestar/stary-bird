@@ -143,14 +143,11 @@
 (() => {
   'use strict';
 
-  const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
+  /* ===== iOS-safe glow sprite ===== */
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
     const off = document.createElement('canvas');
     off.width = off.height = size;
     const c = off.getContext('2d');
-
     const g = c.createRadialGradient(size/2, size/2, size*0.08, size/2, size/2, size*0.48);
     g.addColorStop(0.00, 'rgba(255,255,255,0.70)');
     g.addColorStop(0.35, `rgba(${tint[0]},${tint[1]},${tint[2]},0.35)`);
@@ -158,37 +155,29 @@
     g.addColorStop(1.00, 'rgba(0,0,0,0)');
     c.globalCompositeOperation = 'lighter';
     c.fillStyle = g;
-    c.beginPath();
-    c.arc(size/2, size/2, size*0.48, 0, Math.PI*2);
-    c.fill();
+    c.beginPath(); c.arc(size/2, size/2, size*0.48, 0, Math.PI*2); c.fill();
     return off;
   }
   const glowSprite = makeGlowSprite();
   function drawGlow(ctx, x, y, r, alpha = 1) {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = alpha;
-    const d = r * 2;
-    ctx.drawImage(glowSprite, x - r, y - r, d, d);
-    ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = alpha;
+    const d = r * 2; ctx.drawImage(glowSprite, x - r, y - r, d, d); ctx.restore();
   }
 
+  /* ===== toast ===== */
   const toastEl = document.getElementById('toast');
   let toastTimer = null;
   function showToast(msg){
-    if (!toastEl) return;
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+    if (!toastEl) return; toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
+  /* ===== setup ===== */
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
-
   const charSlider = document.getElementById('charSlider');
   const charRow    = document.getElementById('charRow');
   const charCloseBtn = document.getElementById('charCloseBtn');
@@ -210,23 +199,17 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
   sizeToViewport();
 
+  // prevent double-tap zoom
   let lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) e.preventDefault();
-    lastTouchEnd = now;
+    const now = Date.now(); if (now - lastTouchEnd <= 300) e.preventDefault(); lastTouchEnd = now;
   }, {passive:false});
 
+  /* ===== assets ===== */
   const makeImg = (src) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.src = src;
+    const img = new Image(); img.decoding='async'; img.loading='eager'; img.src = src;
     img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
-    img.onload = () => {
-      if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); }
-      else console.log('[Image OK]', src, img.naturalWidth + 'x' + img.naturalHeight);
-    };
+    img.onload  = () => { if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); } };
     return img;
   };
 
@@ -244,98 +227,48 @@
     }
     return 0;
   }
-
   let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
   if (skinIndex === -1) skinIndex = 0;
-
   function ensureValidSkin(){
     const s = skins[skinIndex];
     if (s && s.type === 'image' && s.img && s.img._error){
-      const old = s.id;
-      skinIndex = firstValidSkinIndex();
+      const old = s.id; skinIndex = firstValidSkinIndex();
       try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-      updateCharBtnLabel();
-      markSelectedTile();
+      updateCharBtnLabel(); markSelectedTile();
       showToast(`Switched from broken "${old}" to "${skins[skinIndex].name}"`);
     }
   }
-
-  function setSkinById(id){
-    const idx = skins.findIndex(s => s.id === id);
-    if (idx >= 0){
-      skinIndex = idx;
-      ensureValidSkin();
-      try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-      updateCharBtnLabel();
-      markSelectedTile();
-    }
-  }
-  function nextSkin(){
-    skinIndex = (skinIndex + 1) % skins.length;
-    ensureValidSkin();
-    try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-    updateCharBtnLabel();
-    markSelectedTile();
-  }
-  function updateCharBtnLabel(){
-    const s = skins[skinIndex];
-    charBtn.textContent = `Change Character (${s ? s.name : '??'})`;
-  }
+  function setSkinById(id){ const idx = skins.findIndex(s => s.id === id); if (idx>=0){ skinIndex = idx; ensureValidSkin(); try{localStorage.setItem('stary_bird_skin', skins[skinIndex].id);}catch(e){} updateCharBtnLabel(); markSelectedTile(); } }
+  function nextSkin(){ skinIndex=(skinIndex+1)%skins.length; ensureValidSkin(); try{localStorage.setItem('stary_bird_skin', skins[skinIndex].id);}catch(e){} updateCharBtnLabel(); markSelectedTile(); }
+  function updateCharBtnLabel(){ const s = skins[skinIndex]; charBtn.textContent = `Change Character (${s ? s.name : '??'})`; }
   updateCharBtnLabel();
 
   function buildCharRow(){
     charRow.innerHTML = '';
     skins.forEach(skin => {
-      const tile = document.createElement('button');
-      tile.type = 'button';
-      tile.className = 'ctile';
-      tile.dataset.skin = skin.id;
-
-      const thumb = document.createElement('div'); thumb.className = 'cthumb';
-
-      if (skin.type === 'image' && skin.img && !skin.img._error){
-        const img = document.createElement('img');
-        img.src = skin.img.src; img.alt = skin.name;
-        img.style.width = '40px'; img.style.height = '40px'; img.style.objectFit = 'contain';
+      const tile = document.createElement('button'); tile.type='button'; tile.className='ctile'; tile.dataset.skin = skin.id;
+      const thumb = document.createElement('div'); thumb.className='cthumb';
+      if (skin.type==='image' && skin.img && !skin.img._error){
+        const img=document.createElement('img'); img.src=skin.img.src; img.alt=skin.name; img.style.width='40px'; img.style.height='40px'; img.style.objectFit='contain';
         thumb.appendChild(img);
       } else {
-        const c = document.createElement('div');
-        c.style.cssText = 'width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;';
-        c.textContent = 'ERR';
-        thumb.appendChild(c);
+        const c=document.createElement('div'); c.style.cssText='width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;'; c.textContent='ERR'; thumb.appendChild(c);
       }
-
       tile.appendChild(thumb);
       tile.addEventListener('click', () => { setSkinById(skin.id); closeCharSlider(); });
       charRow.appendChild(tile);
     });
     markSelectedTile();
   }
+  function markSelectedTile(){ const tiles = charRow.querySelectorAll('.ctile'); tiles.forEach(t=>t.classList.remove('selected')); const s=skins[skinIndex]; const cur = s ? charRow.querySelector(`.ctile[data-skin="${s.id}"]`) : null; if (cur) cur.classList.add('selected'); }
+  function openCharSlider(){ if (!charRow.dataset.built){ buildCharRow(); charRow.dataset.built='1'; } charSlider.classList.add('show'); charSlider.setAttribute('aria-hidden','false'); }
+  function closeCharSlider(){ charSlider.classList.remove('show'); charSlider.setAttribute('aria-hidden','true'); }
+  charBtn.addEventListener('click', e => { e.preventDefault(); if (!state.playing) { const open = charSlider.classList.contains('show'); if (open) closeCharSlider(); else openCharSlider(); } else { nextSkin(); } });
+  charCloseBtn.addEventListener('click', () => closeCharSlider());
 
-  function markSelectedTile(){
-    const tiles = charRow.querySelectorAll('.ctile');
-    tiles.forEach(t => t.classList.remove('selected'));
-    const s = skins[skinIndex];
-    const current = s ? charRow.querySelector(`.ctile[data-skin="${s.id}"]`) : null;
-    if (current) current.classList.add('selected');
-  }
-
-  function openCharSlider(){
-    if (!charRow.dataset.built){
-      buildCharRow();
-      charRow.dataset.built = '1';
-    }
-    charSlider.classList.add('show');
-    charSlider.setAttribute('aria-hidden','false');
-  }
-  function closeCharSlider(){
-    charSlider.classList.remove('show');
-    charSlider.setAttribute('aria-hidden','true');
-  }
-
+  /* ===== helpers ===== */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
   const SETTINGS = {
@@ -353,6 +286,7 @@
     respawnDelayMs: 1000
   };
 
+  /* ===== game state ===== */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
@@ -364,7 +298,6 @@
     trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ffd54a',
     startTime:0, deathPause:false, deathTimer:0
   };
-
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
   function startIfNeeded(){
@@ -373,37 +306,38 @@
     else if (state.dead && !state.deathPause){ restart(); }
   }
   window.addEventListener('keydown', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = true; startIfNeeded();
-    }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) { e.preventDefault(); p.hold = true; startIfNeeded(); }
   }, {passive:false});
   window.addEventListener('keyup', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = false;
-      if (state.dead && !state.deathPause) restart();
-    }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
+  /* ===== world ===== */
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
+
     const mid = h/2;
     const prev = state.lastGapY ?? mid;
     const safeTop = margin + state.gap/2;
     const safeBot = h - margin - state.gap/2;
+
     const allowedDelta = Math.min(SETTINGS.maxSlopePxPerSec * timeToNext, 170);
     let proposed = prev + rand(-allowedDelta, +allowedDelta);
+
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 200;
+
+    const w = 70; // <— original pipe width (used for draw + collision)
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
+
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
 
@@ -446,53 +380,27 @@
     return pipe.baseGapY;
   };
 
+  /* ===== flow ===== */
   function reset(){
-    state.playing=false; state.dead=false;
-    state.deathPause=false; state.deathTimer=0;
-    state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
+    state.playing=false; state.dead=false; state.deathPause=false; state.deathTimer=0;
+    state.score=0; state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
-    closeCharSlider();
-    updateUI();
-    ensureValidSkin();
+    closeCharSlider(); updateUI(); ensureValidSkin();
   }
-  function start(){
-    if (state.dead || state.deathPause) return;
-    state.playing=true;
-    state.startTime = performance.now();
-    if (msg) msg.style.display = 'none';
-    closeCharSlider();
-    updateUI();
-  }
+  function start(){ if (state.dead || state.deathPause) return; state.playing=true; state.startTime = performance.now(); if (msg) msg.style.display='none'; closeCharSlider(); updateUI(); }
   function restart(){ reset(); start(); }
   function updateUI(){ charBtn.style.display = (!state.playing ? '' : 'none'); }
 
-  function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
-    return state.trailBase;
-  }
+  function colorForScore(score){ if (score>=50) return state.trailGold; if (score>=25) return state.trailPurple; if (score>=10) return state.trailBlue; return state.trailBase; }
   function addTrail(){
     const c = colorForScore(state.score);
     for (let i=0;i<3;i++){
       const life = Math.random()*14+24;
-      state.particles.push({
-        type:'spark',
-        x: p.x - 26 + Math.random()*10,
-        y: p.y + Math.random()*10 - 5,
-        vx: -state.speed*0.6 + (Math.random()*-0.6),
-        vy: (Math.random()-.5)*1.3,
-        g: 0, spin:0,
-        life, maxLife: life,
-        r: Math.random()*2+2,
-        color: c
-      });
+      state.particles.push({ type:'spark', x:p.x-26+Math.random()*10, y:p.y+Math.random()*10-5, vx:-state.speed*0.6+(Math.random()*-0.6), vy:(Math.random()-.5)*1.3, g:0, spin:0, life, maxLife:life, r:Math.random()*2+2, color:c });
     }
   }
 
@@ -508,68 +416,62 @@
 
   function explode(px, py){
     const trail = colorForScore(state.score);
-    let skinColor = '#cfe3ff';
-    const skin = skins[skinIndex];
+    let skinColor = '#cfe3ff'; const skin = skins[skinIndex];
     if (skin && skin.type==='shape' && skin.color) skinColor = skin.color;
 
     for (let i=0;i<28;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.2 + Math.random()*3.2;
-      const life = 24 + Math.random()*18;
-      state.particles.push({
-        type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff')
-      });
+      const ang=Math.random()*Math.PI*2, spd=2.2+Math.random()*3.2, life=24+Math.random()*18;
+      state.particles.push({ type:'spark', x:px, y:py, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, g:0.08, spin:0, life, maxLife:life, r:1.6+Math.random()*2.2, color:(Math.random()<0.6?trail:'#9fe9ff') });
     }
     for (let i=0;i<16;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.0 + Math.random()*3.8;
-      const life = 26 + Math.random()*22;
-      state.particles.push({
-        type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
-        g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life, w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail)
-      });
+      const ang=Math.random()*Math.PI*2, spd=2.0+Math.random()*3.8, life=26+Math.random()*22;
+      state.particles.push({ type:'shard', x:px, y:py, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-0.5, g:0.12, spin:(Math.random()*0.3)*(Math.random()<0.5?1:-1), life, maxLife:life, w:6+Math.random()*6, h:2+Math.random()*3, rot:Math.random()*Math.PI, color:(Math.random()<0.5?skinColor:trail) });
     }
-    state.shake = 10;
-    state.flash = 0.5;
+    state.shake = 10; state.flash = 0.5;
   }
 
-  /* --------- Sleeve images (no scaling) --------- */
+  /* ===== Sleeve images / controls ===== */
+  const PIPE_WIDTH = 70; // keep in sync with addPipe() const w
+  const SLEEVE_X_OFFSET_TOP = null;     // set px to choose which 70px vertical slice shows (0..iw-PIPE_WIDTH)
+  const SLEEVE_X_OFFSET_BOTTOM = null;  // independent for bottom
+  const SLEEVE_EDGE_TRIM_TOP = 0;       // trim a few px if cuff has transparent padding
+  const SLEEVE_EDGE_TRIM_BOTTOM = 0;
+
   const sleeveTopImg = makeImg('assets/sleevetop.png');
   const sleeveBotImg = makeImg('assets/sleevebottom.png');
 
-  // Tile an image at its native size inside a clip rect, centered horizontally,
-  // and stacked vertically toward a chosen edge (top or bottom).
-  function tileImageNoScale(img, x, y, w, h, fromEdge /* 'top' | 'bottom' */){
+  // Draw a native-size vertical slice (no scaling) with optional edge trim,
+  // tiled vertically from the chosen edge ('top'|'bottom').
+  function tileImageSliceNoScale(img, x, y, w, h, fromEdge, xOffsetOpt, edgeTrimPx = 0){
     if (!img || img._error || !img.naturalWidth || !img.naturalHeight || w <= 0 || h <= 0) return;
 
-    ctx.save();
-    // Clip to the pipe rectangle so overflow is hidden
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const sliceW = Math.min(PIPE_WIDTH, iw);
 
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
+    let sx;
+    if (typeof xOffsetOpt === 'number' && isFinite(xOffsetOpt)) {
+      sx = Math.max(0, Math.min(iw - sliceW, Math.floor(xOffsetOpt)));
+    } else {
+      sx = Math.floor((iw - sliceW) / 2); // center by default
+    }
 
-    // Center horizontally inside the pipe width (w=70)
-    const ox = Math.floor(x + (w - iw) / 2);
+    const dx = Math.floor(x + (w - sliceW) / 2); // center within pipe width
+    const ty = Math.max(0, Math.min(ih - 1, Math.floor(edgeTrimPx))); // vertical trim
 
-    if (fromEdge === 'bottom'){
-      // Start at the bottom edge and stack upward
-      let yy = y + h - ih;
-      while (yy + ih > y - ih) {
-        ctx.drawImage(img, ox, Math.floor(yy));
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+
+    if (fromEdge === 'bottom') {
+      // anchor image bottom (minus trim) to section bottom, tile upward
+      let yy = y + h - (ih - ty);
+      while (yy + (ih - ty) > y - ih) {
+        ctx.drawImage(img, sx, ty, sliceW, ih - ty, dx, Math.floor(yy), sliceW, ih - ty);
         yy -= ih;
       }
     } else {
-      // fromEdge === 'top' -> start at top and stack downward
-      let yy = y;
+      // anchor image top (plus trim) to section top, tile downward
+      let yy = y - ty;
       while (yy < y + h) {
-        ctx.drawImage(img, ox, Math.floor(yy));
+        ctx.drawImage(img, sx, ty, sliceW, ih - ty, dx, Math.floor(yy), sliceW, ih - ty);
         yy += ih;
       }
     }
@@ -577,25 +479,22 @@
     ctx.restore();
   }
 
+  /* ===== loop ===== */
   let last = performance.now();
   function loop(t){
     const dt = Math.min(32, t - last); last = t;
-    const step = dt / 16.67;
-    state.t += dt;
+    const step = dt / 16.67; state.t += dt;
 
     if (state.deathPause){
       state.deathTimer -= dt;
       for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
+        prt.vy += (prt.g||0) * step; prt.x += prt.vx * step; prt.y += prt.vy * step;
         if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-      draw();
-      requestAnimationFrame(loop);
+      draw(); requestAnimationFrame(loop);
       if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
@@ -612,8 +511,7 @@
 
       for (const o of state.orbs){
         if (o.taken) continue;
-        const dx = p.x - o.x, dy = p.y - o.y;
-        const d2 = dx*dx + dy*dy;
+        const dx = p.x - o.x, dy = p.y - o.y; const d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
           const pull = 0.6 * step;
           p.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - p.y) * pull / 100));
@@ -623,7 +521,8 @@
       p.vy += state.gravity * step;
       p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
-      p.rot += (Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * 1.4)) - p.rot) * 0.2;
+      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
+      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
 
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
@@ -641,17 +540,10 @@
           if (!o.taken){
             const dx = p.x - o.x, dy = p.y - o.y;
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true;
-              state.score += 2;
+              o.taken = true; state.score += 2;
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
-                state.particles.push({
-                  type:'spark',
-                  x:o.x, y:o.y,
-                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
-                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0, life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
-                });
+                state.particles.push({ type:'spark', x:o.x, y:o.y, vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2, vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2, g:0, spin:0, life, maxLife:life, r: Math.random()*2+1.6, color:'#9fe9ff' });
               }
             }
           }
@@ -662,9 +554,7 @@
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
       for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
+        prt.vy += (prt.g||0) * step; prt.x += prt.vx * step; prt.y += prt.vy * step;
         if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
         prt.life -= step;
       }
@@ -672,22 +562,17 @@
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-    draw();
-    requestAnimationFrame(loop);
+    draw(); requestAnimationFrame(loop);
   }
 
   function die(){
     if (state.dead || state.deathPause) return;
-    state.dead = true;
-    state.playing = false;
+    state.dead = true; state.playing = false;
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
     explode(p.x, p.y);
-    state.deathPause = true;
-    state.deathTimer = SETTINGS.respawnDelayMs;
-    if (msg) msg.style.display = 'none';
-    charBtn.style.display = 'none';
-    closeCharSlider();
+    state.deathPause = true; state.deathTimer = SETTINGS.respawnDelayMs;
+    if (msg) msg.style.display = 'none'; charBtn.style.display = 'none'; closeCharSlider();
   }
 
   function draw(){
@@ -713,7 +598,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // ----- SLEEVE PIPES (no scaling; tiled at native size) -----
+    // ===== SLEEVE PIPES (no scaling; cuffs hug the gap) =====
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
         ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
@@ -724,12 +609,17 @@
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      // Top section tiles downward from the very top
-      if (hTop > 0) tileImageNoScale(sleeveTopImg, x, yTop, w, hTop, 'top');
-      // Bottom section tiles upward from the bottom edge of the gap
-      if (hBot > 0) tileImageNoScale(sleeveBotImg, x, yBot, w, hBot, 'bottom');
+      // TOP: anchor image BOTTOM to section BOTTOM (tiles upward)
+      if (hTop > 0) tileImageSliceNoScale(
+        sleeveTopImg, x, yTop, w, hTop, 'bottom', SLEEVE_X_OFFSET_TOP, SLEEVE_EDGE_TRIM_TOP
+      );
 
-      // Optional subtle seam lines for readability
+      // BOTTOM: anchor image TOP to section TOP (tiles downward)
+      if (hBot > 0) tileImageSliceNoScale(
+        sleeveBotImg, x, yBot, w, hBot, 'top', SLEEVE_X_OFFSET_BOTTOM, SLEEVE_EDGE_TRIM_BOTTOM
+      );
+
+      // Optional subtle seam lines
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       if (hTop>0) ctx.fillRect(x, yTop+hTop-1, w, 1);
       if (hBot>0) ctx.fillRect(x, yBot, 1, 1);
@@ -755,7 +645,6 @@
       if (a <= 0) continue;
       ctx.globalAlpha = a;
       ctx.fillStyle = prt.color;
-
       if (prt.type === 'shard'){
         ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
@@ -780,8 +669,7 @@
 
       const s = skins[skinIndex];
       if (s.type === 'image' && s.img && !s.img._error){
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(s.img, -sz/2, -sz/2, sz, sz);
       } else {
         ctx.fillStyle = '#9fc2ff';
@@ -792,11 +680,7 @@
 
     ctx.restore();
 
-    if (state.flash>0){
-      ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
-      ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
-    }
-
+    if (state.flash>0){ ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`; ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight); }
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
