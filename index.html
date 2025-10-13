@@ -724,15 +724,16 @@
     state.flash = 0.5;
   }
 
-  /* ----------------------- Sleeve sprites ----------------------- */
-  const sleeveTopImg = new Image();
-  sleeveTopImg.src = 'assets/sleevetop.png';
-  const sleeveBotImg = new Image();
-  sleeveBotImg.src = 'assets/sleevebottom.png';
+  /* ----------------------- Sleeve sprites & cuff logic ----------------------- */
+  const sleeveTopImg = new Image();  sleeveTopImg.src = 'assets/sleevetop.png';   // cuff at bottom of image
+  const sleeveBotImg = new Image();   sleeveBotImg.src = 'assets/sleevebottom.png';// cuff at top of image
 
-  function cuffHeightForWidth(img, pipeW, fallback = 64){
-    const nw = img.naturalWidth || 0, nh = img.naturalHeight || 0;
-    return (nw > 0 && nh > 0) ? Math.round((nh / nw) * pipeW) : fallback;
+  const CUFF_FRAC_TOP = 0.22;    // ~22% of sleevetop.png height is the cuff region
+  const CUFF_FRAC_BOTTOM = 0.22; // ~22% of sleevebottom.png height is the cuff region
+
+  function cuffPx(img, frac, fallback=128){
+    const ih = img.naturalHeight || 0;
+    return ih ? Math.round(ih * frac) : fallback;
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -884,7 +885,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // ---- SLEEVE PIPES (keeps the exact gameplay gap) ----
+    // ---- FULL SLEEVE PIPES (9-slice style: shaft stretch + cuff keep aspect) ----
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
         ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
@@ -892,32 +893,46 @@
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
 
-      const yTop = 0,           hTop = gy - half;                         // top shaft
-      const yBot = gy + half,   hBot = canvas.clientHeight - yBot;        // bottom shaft
+      const yTop = 0,           hTop = gy - half;                         // top sleeve total
+      const yBot = gy + half,   hBot = canvas.clientHeight - yBot;        // bottom sleeve total
 
-      // Cuff heights scale with width and never intrude into the gap
-      const cuffTopH = Math.min(hTop, cuffHeightForWidth(sleeveTopImg, w, 64));
-      const cuffBotH = Math.min(hBot, cuffHeightForWidth(sleeveBotImg, w, 64));
-
-      // Sleeve shafts (subtle gradients so cuffs pop)
+      // ----- TOP sleeve (cuff at image BOTTOM) -----
       if (hTop > 0){
-        const gTop = ctx.createLinearGradient(0, yTop, 0, yTop + hTop - cuffTopH);
-        gTop.addColorStop(0, 'rgba(14,29,46,0.75)');
-        gTop.addColorStop(1, 'rgba(14,29,46,0.15)');
-        ctx.fillStyle = gTop; ctx.fillRect(x, yTop, w, Math.max(0, hTop - cuffTopH));
+        const iw = sleeveTopImg.naturalWidth  || w;
+        const ih = sleeveTopImg.naturalHeight || hTop;
+        const cuffSrcH = cuffPx(sleeveTopImg, CUFF_FRAC_TOP, 128);
+        const shaftSrcH = Math.max(0, ih - cuffSrcH);
+        const scaleX = w / iw;
+        const cuffDstH = Math.min(hTop, Math.round(cuffSrcH * scaleX));
+        const shaftDstH = Math.max(0, hTop - cuffDstH);
+
+        if (shaftDstH > 0 && shaftSrcH > 0){
+          ctx.drawImage(sleeveTopImg, 0, 0, iw, shaftSrcH, x, yTop, w, shaftDstH);
+        }
+        if (cuffDstH > 0){
+          ctx.drawImage(sleeveTopImg, 0, ih - cuffSrcH, iw, cuffSrcH, x, yTop + hTop - cuffDstH, w, cuffDstH);
+        }
       }
+
+      // ----- BOTTOM sleeve (cuff at image TOP) -----
       if (hBot > 0){
-        const gBot = ctx.createLinearGradient(0, yBot + cuffBotH, 0, canvas.clientHeight);
-        gBot.addColorStop(0, 'rgba(14,29,46,0.15)');
-        gBot.addColorStop(1, 'rgba(14,29,46,0.75)');
-        ctx.fillStyle = gBot; ctx.fillRect(x, yBot + cuffBotH, w, Math.max(0, hBot - cuffBotH));
+        const iw = sleeveBotImg.naturalWidth  || w;
+        const ih = sleeveBotImg.naturalHeight || hBot;
+        const cuffSrcH = cuffPx(sleeveBotImg, CUFF_FRAC_BOTTOM, 128);
+        const shaftSrcH = Math.max(0, ih - cuffSrcH);
+        const scaleX = w / iw;
+        const cuffDstH = Math.min(hBot, Math.round(cuffSrcH * scaleX));
+        const shaftDstH = Math.max(0, hBot - cuffDstH);
+
+        if (cuffDstH > 0){
+          ctx.drawImage(sleeveBotImg, 0, 0, iw, cuffSrcH, x, yBot, w, cuffDstH);
+        }
+        if (shaftDstH > 0 && shaftSrcH > 0){
+          ctx.drawImage(sleeveBotImg, 0, cuffSrcH, iw, shaftSrcH, x, yBot + cuffDstH, w, shaftDstH);
+        }
       }
 
-      // Cuffs aligned to gap edges exactly
-      if (hTop > 0 && cuffTopH > 0) ctx.drawImage(sleeveTopImg, x, (yTop + hTop) - cuffTopH, w, cuffTopH);
-      if (hBot > 0 && cuffBotH > 0) ctx.drawImage(sleeveBotImg, x, yBot, w, cuffBotH);
-
-      // Soft glow at the gap edges
+      // Soft glow at the gap edges (optional)
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.18;
