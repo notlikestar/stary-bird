@@ -40,7 +40,7 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Change Character button (safe-area aware) */
+  /* Character button (safe-area aware) */
   .charbtn{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
@@ -54,18 +54,40 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* Music toggle button (mirrors the char button styling) */
-  #musicBtn{
+  /* Music controls (button + mini slider) */
+  .music-wrap{
     position:absolute;
     right:calc(12px + env(safe-area-inset-right));
     bottom:calc(12px + env(safe-area-inset-bottom));
+    display:flex; gap:8px; align-items:center;
     z-index:5;
+  }
+  #musicBtn{
     padding:10px 14px; border-radius:12px;
     border:1px solid #2a3a5a;
     background:linear-gradient(180deg,#111827,#0d1421);
     color:#eaf2ff; font-weight:800; letter-spacing:.05em;
     box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
     -webkit-tap-highlight-color:transparent;
+  }
+  #volSlider{
+    -webkit-appearance:none; appearance:none;
+    width:88px; height:8px; border-radius:999px; outline:none;
+    background:linear-gradient(180deg,#101826,#0c1421);
+    border:1px solid #26334d;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  #volSlider::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:16px; height:16px; border-radius:50%;
+    background:#eaf2ff; border:1px solid #2a3a5a;
+    box-shadow:0 1px 2px rgba(0,0,0,.35);
+    margin-top:-4px; /* centers on the 8px track */
+  }
+  #volSlider::-moz-range-thumb{
+    width:16px; height:16px; border-radius:50%;
+    background:#eaf2ff; border:1px solid #2a3a5a;
+    box-shadow:0 1px 2px rgba(0,0,0,.35);
   }
 
   /* --------- Compact character slider --------- */
@@ -88,9 +110,9 @@
     visibility:hidden;
   }
   .charslider.show{ transform:translateY(0); visibility:visible; }
-
   .chars{
-    display:flex; gap:6px; align-items:center; overflow-x:auto; overscroll-behavior:contain; padding:2px;
+    display:flex; gap:6px; align-items:center;
+    overflow-x:auto; overscroll-behavior:contain; padding:2px;
     -webkit-overflow-scrolling:touch;
   }
   .chars::-webkit-scrollbar{ height:6px; }
@@ -140,12 +162,17 @@
     <div class="center" id="msg">TAP / SPACE TO START</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
 
-    <!-- Music toggle button -->
-    <button id="musicBtn" type="button" aria-label="Toggle music">🎵</button>
+    <!-- Music controls -->
+    <div class="music-wrap">
+      <button id="musicBtn" type="button" aria-label="Toggle music">🎵</button>
+      <input id="volSlider" type="range" min="0" max="1" step="0.01" aria-label="Volume">
+    </div>
   </div>
 
-  <!-- Background Music (put your file at assets/bgmusic.mp3) -->
-  <audio id="bgMusic" src="assets/bgmusic.mp3" loop preload="auto"></audio>
+  <!-- Background Music -->
+  <!-- Use playsinline+autoplay; browsers may still require a user gesture if not muted,
+       so we also call play() on load and on the first pointer interaction -->
+  <audio id="bgMusic" src="assets/bgmusic.mp3" loop preload="auto" playsinline autoplay></audio>
 
   <!-- Compact Character Slider (icons only) -->
   <div class="charslider" id="charSlider" aria-hidden="true">
@@ -157,35 +184,56 @@
 (() => {
   'use strict';
 
-  /* ==================== MUSIC SYSTEM ==================== */
-  const bgMusic  = document.getElementById('bgMusic');
-  const musicBtn = document.getElementById('musicBtn');
-  const MUSIC_KEY = 'stary_bird_music'; // 'on' | 'off'
+  /* ==================== MUSIC SYSTEM (autoplay + volume) ==================== */
+  const bgMusic   = document.getElementById('bgMusic');
+  const musicBtn  = document.getElementById('musicBtn');
+  const volSlider = document.getElementById('volSlider');
+
+  const MUSIC_KEY  = 'stary_bird_music';   // 'on' | 'off'
+  const VOLUME_KEY = 'stary_bird_volume';  // 0..1
+
+  // Restore saved volume or default to 0.25
+  let savedVol = parseFloat(localStorage.getItem(VOLUME_KEY));
+  if (Number.isNaN(savedVol)) savedVol = 0.25;
+  savedVol = Math.min(1, Math.max(0, savedVol));
+  bgMusic.volume = savedVol;
+  volSlider.value = String(savedVol);
+
+  // Initial icon state
   let playing = false;
+  const savedMusicPref = localStorage.getItem(MUSIC_KEY); // 'on' | 'off' | null
+  musicBtn.textContent = (savedMusicPref === 'off' || savedVol === 0) ? '🔇' : '🎵';
 
-  // restore previous preference
-  const saved = localStorage.getItem(MUSIC_KEY);
-  if (saved === 'off') {
-    playing = false;
-    musicBtn.textContent = '🔇';
+  // Try to autoplay right away (desktop usually OK; mobile may block)
+  const tryPlay = () => {
+    // If user explicitly turned music off previously, don't auto-start
+    if (savedMusicPref === 'off') return;
+    return bgMusic.play().then(() => {
+      playing = true;
+      musicBtn.textContent = (bgMusic.volume === 0) ? '🔇' : '🎵';
+    }).catch(() => {
+      // Autoplay blocked — we'll start on first interaction
+    });
+  };
+  // Attempt once on load
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    tryPlay();
   } else {
-    // default to ON visual, but most browsers require a tap to start audio
-    musicBtn.textContent = '🎵';
+    document.addEventListener('DOMContentLoaded', tryPlay, { once:true });
   }
-
-  // first user gesture: if pref was ON, try to play once
-  const primePlay = () => {
-    if (!playing && (saved === 'on' || saved === null)) {
+  // Guaranteed backup: start on first pointer interaction if not already playing
+  const kickstart = () => {
+    if (!playing && savedMusicPref !== 'off') {
       bgMusic.play().then(() => {
         playing = true;
-        musicBtn.textContent = '🎵';
-      }).catch(() => {/* autoplay blocked until button tap */});
+        musicBtn.textContent = (bgMusic.volume === 0) ? '🔇' : '🎵';
+      }).catch(()=>{});
     }
-    window.removeEventListener('pointerdown', primePlay, { once:true });
+    window.removeEventListener('pointerdown', kickstart, { once:true });
   };
-  window.addEventListener('pointerdown', primePlay, { once:true });
+  window.addEventListener('pointerdown', kickstart, { once:true });
 
-  // button toggles
+  // Button toggles play/pause
   musicBtn.addEventListener('click', () => {
     if (playing) {
       bgMusic.pause();
@@ -195,9 +243,26 @@
     } else {
       bgMusic.play().then(() => {
         playing = true;
-        musicBtn.textContent = '🎵';
+        musicBtn.textContent = (bgMusic.volume === 0) ? '🔇' : '🎵';
         try { localStorage.setItem(MUSIC_KEY, 'on'); } catch(e){}
       });
+    }
+  });
+
+  // Volume slider
+  volSlider.addEventListener('input', () => {
+    const v = parseFloat(volSlider.value);
+    bgMusic.volume = isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.25;
+    musicBtn.textContent = (bgMusic.volume === 0 || !playing) ? '🔇' : '🎵';
+  });
+  volSlider.addEventListener('change', () => {
+    try { localStorage.setItem(VOLUME_KEY, String(bgMusic.volume)); } catch(e){}
+    // If the user dragged volume from 0 up, ensure music preference is ON
+    if (bgMusic.volume > 0 && !playing && localStorage.getItem(MUSIC_KEY) !== 'off') {
+      bgMusic.play().then(() => {
+        playing = true;
+        musicBtn.textContent = '🎵';
+      }).catch(()=>{});
     }
   });
 
@@ -511,7 +576,6 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // Show character button only when not playing (start/death screens)
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
@@ -588,7 +652,7 @@
       });
     }
     state.shake = 10;
-    state.flash = 0.5; // keep flash ONLY for death/explosion
+    state.flash = 0.5;
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -598,7 +662,6 @@
     const step = dt / 16.67;
     state.t += dt;
 
-    /* ---- Death pause: animate particles only, freeze world, then reset ---- */
     if (state.deathPause){
       state.deathTimer -= dt;
 
@@ -617,12 +680,11 @@
 
       if (state.deathTimer <= 0){
         state.deathPause = false;
-        reset(); // back to start screen (hover preview)
+        reset();
       }
       return;
     }
 
-    // Micro-acceleration & difficulty over time
     if (state.playing && !state.dead){
       const sinceStart = Math.max(0, t - state.startTime);
       const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
@@ -633,38 +695,33 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
-      // Orb magnetism (vertical only)
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
         const d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
           const pull = 0.6 * step;
-          p.vy += clamp((o.y - p.y) * pull / 100, -0.8*step, 0.8*step);
+          p.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - p.y) * pull / 100));
         }
       }
 
-      // Physics
       p.vy += state.gravity * step;
-      p.vy = clamp(p.vy, -9, state.maxVy);
+      p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
-      p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
-      p.rot = lerp(p.rot, p.targetRot, 0.2);
+      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
+      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
 
-      // Spawn & scroll
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
-      // Score & collisions
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
       if (!state.dead && hitBounds()) die();
 
-      // Orb pickup (+2 score, sparkle)
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
@@ -688,11 +745,9 @@
         }
       }
 
-      // Cleanup
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
-      // Particles
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -708,7 +763,6 @@
     requestAnimationFrame(loop);
   }
 
-  /* ----------------------- Death: explosion + 1s pause ----------------------- */
   function die(){
     if (state.dead || state.deathPause) return;
     state.dead = true;
@@ -727,14 +781,12 @@
     closeCharSlider();
   }
 
-  /* ----------------------- Render ----------------------- */
   function draw(){
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // Parallax starfield (two layers)
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -751,7 +803,6 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // Pipes
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
         ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
@@ -768,7 +819,6 @@
       if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
     }
 
-    // Orbs with glow
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
@@ -782,7 +832,6 @@
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // Particles (sparks & shards)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -801,17 +850,15 @@
     }
     ctx.globalAlpha = 1;
 
-    // Player — draw only when alive (hide during death pause to showcase explosion)
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
       ctx.translate(p.x, p.y + idleOffset);
       ctx.rotate(p.rot);
       const sz = 54;
-      const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
+      const sAmt = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
       ctx.scale(1 + sAmt, 1 - sAmt);
 
-      // soft glow (no border)
       ctx.globalAlpha = 0.25;
       ctx.filter = 'blur(4px)';
       ctx.fillStyle = '#ffffff';
@@ -848,11 +895,9 @@
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
-    // HUD
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
-  /* ----------------------- Boot ----------------------- */
   reset();
   requestAnimationFrame(loop);
 })();
