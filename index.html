@@ -54,65 +54,62 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* --------- Character Modal --------- */
-  .modal{
-    position:fixed; inset:0;
-    display:none; /* toggled by .show */
-    z-index:10;
-  }
-  .modal.show{ display:block; }
-  .modal-backdrop{
-    position:absolute; inset:0;
-    background:rgba(0,0,0,.45);
-    backdrop-filter:saturate(140%) blur(4px);
-  }
-  .modal-sheet{
-    position:absolute;
+  /* --------- Character Slider (bottom drawer) --------- */
+  .charslider{
+    position:fixed;
     left:calc(10px + env(safe-area-inset-left));
     right:calc(10px + env(safe-area-inset-right));
-    top:calc(10px + env(safe-area-inset-top));
     bottom:calc(10px + env(safe-area-inset-bottom));
-    margin:auto;
-    max-width:min(780px, 92vw);
-    max-height:min(78vh, 520px);
+    z-index:10;
+    transform:translateY(120%);
+    transition:transform .18s ease-out;
     border:1px solid #26334d;
     background:linear-gradient(180deg,#101826,#0c1421);
     box-shadow:0 18px 48px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
     border-radius:16px;
-    display:flex; flex-direction:column;
+    padding:10px 12px;
+    max-width: min(920px, 96vw);
+    margin:0 auto;
+    visibility:hidden;
   }
-  .modal-head{
+  .charslider.show{
+    transform:translateY(0);
+    visibility:visible;
+  }
+  .charslider-head{
     display:flex; align-items:center; justify-content:space-between;
-    padding:10px 12px; border-bottom:1px solid #1e2a41;
     font-weight:900; letter-spacing:.06em; color:#cfe0ff;
+    padding:2px 2px 8px 2px;
   }
-  .modal-close{
-    appearance:none; border:1px solid #2a3a5a; border-radius:10px;
-    padding:6px 10px; background:#0e1624; color:#eaf2ff; font-weight:800;
+
+  .chars{
+    display:flex; gap:10px; align-items:center;
+    overflow-x:auto; overscroll-behavior:contain; padding-bottom:6px;
+    -webkit-overflow-scrolling:touch;
   }
-  .grid{
-    padding:12px; display:grid; gap:12px;
-    grid-template-columns: repeat( auto-fill, minmax(140px, 1fr) );
-    overflow:auto;
-  }
-  .tile{
-    border:1px solid #26334d; border-radius:14px; padding:12px;
+  .chars::-webkit-scrollbar{ height:8px; }
+  .chars::-webkit-scrollbar-thumb{ background:#22314c; border-radius:8px; }
+
+  .ctile{
+    flex:0 0 auto;
+    border:1px solid #26334d; border-radius:14px; padding:8px;
     background:linear-gradient(180deg,#0f1725,#0c1320);
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
     cursor:pointer; user-select:none;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+    min-width:92px;
   }
-  .tile:active{ transform:scale(.98); }
-  .tile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
-  .thumb{
-    width:84px; height:84px; display:grid; place-items:center;
-    border-radius:12px; background:rgba(255,255,255,.04);
-    overflow:hidden;
+  .ctile:active{ transform:scale(.98); }
+  .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
+
+  .cthumb{
+    width:68px; height:68px; display:grid; place-items:center;
+    border-radius:12px; background:rgba(255,255,255,.04); overflow:hidden;
   }
-  .thumb canvas{ display:block; width:84px; height:84px; }
-  .thumb img{ display:block; width:84px; height:84px; object-fit:contain; image-rendering:auto; }
-  .label{ font-weight:800; color:#cfe0ff; letter-spacing:.04em; }
+  .cthumb canvas{ display:block; width:68px; height:68px; }
+  .cthumb img{ display:block; width:68px; height:68px; object-fit:contain; image-rendering:auto; }
+  .clabel{ font-weight:800; color:#cfe0ff; letter-spacing:.03em; font-size:12px; }
 </style>
 </head>
 <body>
@@ -124,16 +121,13 @@
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
-  <!-- Character Select Modal -->
-  <div class="modal" id="charModal" aria-hidden="true">
-    <div class="modal-backdrop" data-close></div>
-    <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Select Character">
-      <div class="modal-head">
-        <div>SELECT CHARACTER</div>
-        <button class="modal-close" type="button" data-close>Close</button>
-      </div>
-      <div class="grid" id="charGrid"></div>
+  <!-- Character Slider (bottom drawer) -->
+  <div class="charslider" id="charSlider" aria-hidden="true">
+    <div class="charslider-head">
+      <div>SELECT CHARACTER</div>
+      <button class="modal-close" type="button" id="charCloseBtn">Close</button>
     </div>
+    <div class="chars" id="charRow"></div>
   </div>
 
 <script>
@@ -145,8 +139,11 @@
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
-  const charModal = document.getElementById('charModal');
-  const charGrid  = document.getElementById('charGrid');
+
+  // slider elements
+  const charSlider = document.getElementById('charSlider');
+  const charRow    = document.getElementById('charRow');
+  const charCloseBtn = document.getElementById('charCloseBtn');
 
   /* ---------- Robust sizing for iPhone landscape ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -205,7 +202,7 @@
   }
   function nextSkin(){
     skinIndex = (skinIndex + 1) % skins.length;
-    localStorage.setItem('stary_bird_skin', skins[skinIndex].id);
+    try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
     updateCharBtnLabel();
     markSelectedTile();
   }
@@ -214,80 +211,81 @@
   }
   updateCharBtnLabel();
 
-  /* ----------------------- Character Modal ----------------------- */
-  function openCharModal(){
-    // build once
-    if (!charGrid.dataset.built){
-      buildCharGrid();
-      charGrid.dataset.built = '1';
-    }
-    charModal.classList.add('show');
-    charModal.setAttribute('aria-hidden','false');
-  }
-  function closeCharModal(){
-    charModal.classList.remove('show');
-    charModal.setAttribute('aria-hidden','true');
-  }
-  function buildCharGrid(){
-    charGrid.innerHTML = '';
+  /* ----------------------- Character Slider ----------------------- */
+  function buildCharRow(){
+    charRow.innerHTML = '';
     skins.forEach(skin => {
       const tile = document.createElement('button');
       tile.type = 'button';
-      tile.className = 'tile';
+      tile.className = 'ctile';
       tile.dataset.skin = skin.id;
 
-      const thumb = document.createElement('div');
-      thumb.className = 'thumb';
+      const thumb = document.createElement('div'); thumb.className = 'cthumb';
 
       if (skin.type === 'image' && skin.img){
         const img = document.createElement('img');
-        img.src = skin.img.src;
-        img.alt = skin.name;
+        img.src = skin.img.src; img.alt = skin.name;
         thumb.appendChild(img);
       } else {
-        // draw a small preview on a canvas
-        const c = document.createElement('canvas');
-        c.width = 84; c.height = 84;
+        const c = document.createElement('canvas'); c.width = 68; c.height = 68;
         const cx = c.getContext('2d');
         cx.imageSmoothingEnabled = true;
         cx.imageSmoothingQuality = 'high';
-        cx.translate(42,42);
+        cx.translate(34,34);
         cx.fillStyle = (skin.color || '#9fc2ff');
-
         if (skin.shape === 'diamond'){
           cx.beginPath();
-          cx.moveTo(0,-28); cx.lineTo(28,0); cx.lineTo(0,28); cx.lineTo(-28,0); cx.closePath();
+          cx.moveTo(0,-22); cx.lineTo(22,0); cx.lineTo(0,22); cx.lineTo(-22,0); cx.closePath();
           cx.fill();
-        } else { // circle
-          cx.beginPath(); cx.arc(0,0, 28, 0, Math.PI*2); cx.fill();
+        } else {
+          cx.beginPath(); cx.arc(0,0, 22, 0, Math.PI*2); cx.fill();
         }
         thumb.appendChild(c);
       }
 
       const label = document.createElement('div');
-      label.className = 'label';
+      label.className = 'clabel';
       label.textContent = skin.name;
 
       tile.appendChild(thumb);
       tile.appendChild(label);
-      tile.addEventListener('click', () => { setSkinById(skin.id); closeCharModal(); });
+      tile.addEventListener('click', () => { setSkinById(skin.id); closeCharSlider(); });
 
-      charGrid.appendChild(tile);
+      charRow.appendChild(tile);
     });
     markSelectedTile();
   }
+
   function markSelectedTile(){
-    const tiles = charGrid.querySelectorAll('.tile');
+    const tiles = charRow.querySelectorAll('.ctile');
     tiles.forEach(t => t.classList.remove('selected'));
-    const current = charGrid.querySelector(`.tile[data-skin="${skins[skinIndex].id}"]`);
+    const current = charRow.querySelector(`.ctile[data-skin="${skins[skinIndex].id}"]`);
     if (current) current.classList.add('selected');
   }
+
+  function openCharSlider(){
+    if (!charRow.dataset.built){
+      buildCharRow();
+      charRow.dataset.built = '1';
+    }
+    charSlider.classList.add('show');
+    charSlider.setAttribute('aria-hidden','false');
+  }
+  function closeCharSlider(){
+    charSlider.classList.remove('show');
+    charSlider.setAttribute('aria-hidden','true');
+  }
+
   charBtn.addEventListener('click', e => {
     e.preventDefault();
-    if (!state.playing) openCharModal(); // only when not playing
-    else nextSkin(); // fallback: cycle during play if needed
+    if (!state.playing) {
+      const open = charSlider.classList.contains('show');
+      if (open) closeCharSlider(); else openCharSlider();
+    } else {
+      nextSkin(); // in-game fallback
+    }
   });
-  charModal.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeCharModal(); });
+  charCloseBtn.addEventListener('click', () => closeCharSlider());
 
   /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -338,6 +336,7 @@
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
+    if (charSlider.classList.contains('show')) return; // don't start under slider
     if (!state.playing && !state.dead){
       start();
     } else if (state.dead && !state.deathPause){
@@ -436,12 +435,14 @@
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
+    closeCharSlider();
     updateUI();
   }
   function start(){
     if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
+    closeCharSlider();
     if (msg) msg.style.display = 'none';
     updateUI();
   }
@@ -601,7 +602,7 @@
       }
       if (!state.dead && hitBounds()) die();
 
-      // Orb pickup (+2 score, sparkle) — removed milestone flash bump to stop random screen flashes
+      // Orb pickup (+2 score, sparkle)
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
@@ -609,10 +610,6 @@
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
               o.taken = true;
               state.score += 2;
-              // (removed) flash bump on milestones to avoid unintended full-screen flashes
-              // if ([10,25,50].includes(state.score)) state.flash = Math.min(0.5, state.flash + 0.35);
-
-              // Keep nice cyan sparkle
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
@@ -665,6 +662,7 @@
 
     if (msg) msg.style.display = 'none';
     charBtn.style.display = 'none';
+    closeCharSlider();
   }
 
   /* ----------------------- Render ----------------------- */
