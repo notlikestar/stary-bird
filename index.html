@@ -148,8 +148,15 @@
     doubleProb: 0.10,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000,     // 1s freeze
-    slideMs: 600              // slide duration (old -> left, start -> in)
+    respawnDelayMs: 1000,       // 1s freeze before respawn
+
+    // ---- New fun knobs ----
+    perfectPx: 10,        // center window for perfect bonus
+    streakEvery: 5,       // every N pipes => streak bonus
+    streakBonus: 2,       // +score on each streak milestone
+    grazePx: 6,           // distance from gap edge to spawn graze sparks
+    grazeThrottleMs: 120, // don't spam grazes
+    spawnGraceMs: 700     // early immunity at run start
   };
 
   /* ----------------------- Game State ----------------------- */
@@ -173,19 +180,19 @@
     deathPause:false,
     deathTimer:0,
 
-    // Slide transition
-    transition: { type:'none', t:0 } // type: 'none' | 'slide'
+    // ---- New scoring cosmetics ----
+    passedCount:0,
+    streak:0,
+    lastGrazeT:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
-  // start preview position (no allocations each frame)
-  const preview = { x:180, y:() => canvas.clientHeight/2 };
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (!state.playing && !state.dead){
       start();
-    } else if (state.dead && !state.deathPause && state.transition.type==='none'){
+    } else if (state.dead && !state.deathPause){
       restart();
     }
   }
@@ -197,11 +204,11 @@
   window.addEventListener('keyup', e => {
     if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
       e.preventDefault(); p.hold = false;
-      if (state.dead && !state.deathPause && state.transition.type==='none') restart();
+      if (state.dead && !state.deathPause) restart();
     }
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
-  canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause && state.transition.type==='none') restart(); }, {passive:false});
+  canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
   charBtn.addEventListener('click', e => { e.preventDefault(); nextSkin(); });
 
   /* ----------------------- World ----------------------- */
@@ -274,32 +281,32 @@
   function reset(){
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
-    state.transition = { type:'none', t:0 };
     state.score=0;
     state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
+    state.passedCount=0; state.streak=0; state.lastGrazeT=0;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     updateUI();
   }
   function start(){
-    if (state.dead || state.deathPause || state.transition.type!=='none') return;
+    if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
+    state.passedCount=0; state.streak=0;
     if (msg) msg.style.display = 'none';
     updateUI();
   }
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // Only show char button when not actively playing and not sliding
-    charBtn.style.display = (!state.playing && state.transition.type==='none') ? '' : 'none';
+    charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
-  /* ----------------------- Trail (discrete milestones) ----------------------- */
+  /* ----------------------- Trail colors ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -375,14 +382,6 @@
     state.flash = 0.5;
   }
 
-  /* ----------------------- Transition ----------------------- */
-  function beginSlideBack(){
-    state.transition = { type:'slide', t:0 };
-    // keep char button hidden and start text hidden during slide
-    if (msg) msg.style.display = 'none';
-    charBtn.style.display = 'none';
-  }
-
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
   let last = performance.now();
   function loop(t){
@@ -390,7 +389,7 @@
     const step = dt / 16.67;
     state.t += dt;
 
-    /* ---- Death pause: particles animate only ---- */
+    /* ---- Death pause: animate particles only, freeze world, then reset ---- */
     if (state.deathPause){
       state.deathTimer -= dt;
 
@@ -404,47 +403,17 @@
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
 
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-
-      // draw frozen world (no player) during pause
       draw();
       requestAnimationFrame(loop);
 
       if (state.deathTimer <= 0){
         state.deathPause = false;
-        beginSlideBack(); // start slide transition instead of immediate reset
+        reset(); // back to start screen (hover preview)
       }
       return;
     }
 
-    /* ---- Slide transition: old scene -> left, new start scene -> in ---- */
-    if (state.transition.type === 'slide'){
-      state.transition.t += dt;
-      const prog = Math.min(1, state.transition.t / SETTINGS.slideMs);
-      const slidePx = Math.floor(canvas.clientWidth * prog);
-
-      // During slide, keep explosion particles drifting a bit
-      for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
-        if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        prt.life -= step;
-      }
-      while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
-      state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-
-      drawSlide(slidePx);
-      requestAnimationFrame(loop);
-
-      if (prog >= 1){
-        // Now fully switch to fresh start state (no pipes/orbs)
-        reset(); // shows start hover immediately
-      }
-      return;
-    }
-
-    // Normal play updates
+    // Micro-acceleration & difficulty over time
     if (state.playing && !state.dead){
       const sinceStart = Math.max(0, t - state.startTime);
       const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
@@ -466,23 +435,83 @@
         }
       }
 
+      // Physics
       p.vy += state.gravity * step;
       p.vy = clamp(p.vy, -9, state.maxVy);
       p.y  += p.vy * step;
       p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
       p.rot = lerp(p.rot, p.targetRot, 0.2);
 
+      // Spawn & scroll
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
+      // Score / pass logic + bonuses
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
-        if (hitPipe(pipe)) { die(); break; }
-      }
-      if (!state.dead && hitBounds()) die();
+        if (!pipe.passed && p.x > pipe.x + pipe.w){
+          pipe.passed = true;
 
+          // base point
+          state.score++;
+          state.passedCount++;
+
+          // perfect-center bonus
+          const gy = currentGapY(pipe);
+          if (Math.abs(p.y - gy) <= SETTINGS.perfectPx){
+            state.score += 1;
+            state.flash = Math.min(0.5, state.flash + 0.25);
+            for (let i=0;i<8;i++){
+              const life = Math.random()*10+14;
+              state.particles.push({
+                type:'spark',
+                x: pipe.x + pipe.w + 6, y: gy,
+                vx: Math.cos(i/8*2*Math.PI)*Math.random()*1.8,
+                vy: Math.sin(i/8*2*Math.PI)*Math.random()*1.8,
+                g: 0.03, spin:0,
+                life, maxLife: life,
+                r: Math.random()*1.8+1.2,
+                color: '#9fe9ff'
+              });
+            }
+          }
+
+          // streak bonus
+          if (state.passedCount % SETTINGS.streakEvery === 0){
+            state.score += SETTINGS.streakBonus;
+            state.flash = Math.min(0.5, state.flash + 0.2);
+            for (let i=0;i<10;i++){
+              const life = Math.random()*10+16;
+              state.particles.push({
+                type:'spark',
+                x: p.x, y: p.y,
+                vx: Math.cos(i/10*2*Math.PI)*Math.random()*2.0,
+                vy: Math.sin(i/10*2*Math.PI)*Math.random()*2.0,
+                g: 0.04, spin:0,
+                life, maxLife: life,
+                r: Math.random()*2+1.2,
+                color: '#ffd54a'
+              });
+            }
+          }
+        }
+
+        // Collision with spawn grace
+        if (hitPipe(pipe)) {
+          const sinceStartMs = performance.now() - state.startTime;
+          if (sinceStartMs >= SETTINGS.spawnGraceMs) die();
+          break;
+        }
+      }
+
+      // Bounds collision with spawn grace
+      if (!state.dead && hitBounds()){
+        const sinceStartMs = performance.now() - state.startTime;
+        if (sinceStartMs >= SETTINGS.spawnGraceMs) die();
+      }
+
+      // Orb pickup
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
@@ -506,9 +535,49 @@
         }
       }
 
+      // GRAZE sparks (cosmetic, throttled)
+      if (!state.dead){
+        let grazed = false;
+        for (const pipe of state.pipes){
+          if (p.x + p.w*0.35 <= pipe.x || p.x - p.w*0.35 >= pipe.x + pipe.w) continue;
+          const gy = currentGapY(pipe);
+          const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
+          const topEdge = gy - half;
+          const botEdge = gy + half;
+          if (p.y >= topEdge && p.y <= botEdge){
+            const distTop = Math.abs(p.y - topEdge);
+            const distBot = Math.abs(botEdge - p.y);
+            if (distTop < SETTINGS.grazePx || distBot < SETTINGS.grazePx){
+              grazed = true; break;
+            }
+          }
+        }
+        if (grazed){
+          const nowT = state.t;
+          if (nowT - state.lastGrazeT >= SETTINGS.grazeThrottleMs){
+            state.lastGrazeT = nowT;
+            for (let i=0;i<4;i++){
+              const life = Math.random()*8+10;
+              state.particles.push({
+                type:'spark',
+                x: p.x + (Math.random()<0.5?-8:8), y: p.y + (Math.random()*12-6),
+                vx: (Math.random()<0.5?-1:1)* (0.6 + Math.random()*0.8),
+                vy: (Math.random()-.5)*0.8,
+                g: 0.03, spin:0,
+                life, maxLife: life,
+                r: Math.random()*1.4+1.0,
+                color: '#cfe3ff'
+              });
+            }
+          }
+        }
+      }
+
+      // Cleanup
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
+      // Particles
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -524,9 +593,9 @@
     requestAnimationFrame(loop);
   }
 
-  /* ----------------------- Death: explosion + pause + slide ----------------------- */
+  /* ----------------------- Death: explosion + 1s pause ----------------------- */
   function die(){
-    if (state.dead || state.deathPause || state.transition.type!=='none') return;
+    if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
 
@@ -542,8 +611,14 @@
     charBtn.style.display = 'none';
   }
 
-  /* ----------------------- Render helpers ----------------------- */
-  function drawBackground(){
+  /* ----------------------- Render ----------------------- */
+  function draw(){
+    const sx = (Math.random()*2-1)*state.shake;
+    const sy = (Math.random()*2-1)*state.shake;
+
+    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
+
+    // Parallax starfield (two layers)
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -557,9 +632,9 @@
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
     ctx.globalAlpha = 1;
-  }
 
-  function drawPipesOrbsParticles(hidePlayer=true){
+    ctx.save(); ctx.translate(sx, sy);
+
     // Pipes
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
@@ -576,7 +651,8 @@
       if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
       if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
     }
-    // Orbs
+
+    // Orbs with glow
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
@@ -589,14 +665,18 @@
       ctx.fillStyle = "#77eaff"; ctx.fill();
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
-    // Particles
+
+    // Particles (sparks & shards)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
       ctx.globalAlpha = a;
       ctx.fillStyle = prt.color;
+
       if (prt.type === 'shard'){
-        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
+        ctx.save();
+        ctx.translate(prt.x, prt.y);
+        ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
@@ -605,8 +685,8 @@
     }
     ctx.globalAlpha = 1;
 
-    if (!hidePlayer){
-      // draw player (used by normal mode)
+    // Player — draw only when alive (hide during death pause to showcase explosion)
+    if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
       ctx.translate(p.x, p.y + idleOffset);
@@ -615,8 +695,10 @@
       const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
       ctx.scale(1 + sAmt, 1 - sAmt);
 
+      // soft glow (no border)
       ctx.globalAlpha = 0.25;
-      ctx.filter = 'blur(4px)'; ctx.fillStyle = '#ffffff';
+      ctx.filter = 'blur(4px)';
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.ellipse(0, 0, sz*0.45, sz*0.45, 0, 0, Math.PI*2); ctx.fill();
       ctx.filter = 'none'; ctx.globalAlpha = 1;
 
@@ -631,7 +713,7 @@
           ctx.beginPath();
           ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
           ctx.fill();
-        } else {
+        } else { // circle
           ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
         }
       } else {
@@ -642,80 +724,7 @@
       }
       ctx.restore();
     }
-  }
 
-  function drawStartPreview(offsetX){
-    // Start scene background
-    ctx.save(); ctx.translate(offsetX,0);
-    drawBackground();
-
-    // Hovering preview character (independent of game state)
-    ctx.save();
-    const hover = Math.sin(state.t * 0.005) * 8;
-    ctx.translate(preview.x, preview.y() + hover);
-    const sz = 54;
-    // soft glow
-    ctx.globalAlpha = 0.25; ctx.filter='blur(4px)';
-    ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.ellipse(0,0,sz*0.45,sz*0.45,0,0,Math.PI*2); ctx.fill();
-    ctx.filter='none'; ctx.globalAlpha = 1;
-
-    const skin = skins[skinIndex];
-    if (skin.type === 'image' && skin.img && !skin.img._error){
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(skin.img, -sz/2, -sz/2, sz, sz);
-    } else if (skin.type === 'shape'){
-      ctx.fillStyle = skin.color || '#9fc2ff';
-      if (skin.shape === 'diamond'){
-        ctx.beginPath();
-        ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-        ctx.fill();
-      } else {
-        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
-      }
-    } else {
-      ctx.fillStyle = '#9fc2ff';
-      ctx.beginPath();
-      ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-    ctx.restore();
-  }
-
-  function drawSlide(slidePx){
-    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    // OLD scene (right -> left)
-    ctx.save();
-    ctx.translate(-slidePx, 0);
-    drawBackground();
-    // draw old world without player (we already "exploded")
-    drawPipesOrbsParticles(true);
-    ctx.restore();
-
-    // NEW start scene (comes in from right)
-    drawStartPreview(canvas.clientWidth - slidePx);
-
-    // Optional subtle veil
-    // ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    // HUD during slide: keep last HI visible but don't increment score
-    hud.textContent = `${state.score} • HI ${state.hi}`;
-  }
-
-  /* ----------------------- Render ----------------------- */
-  function draw(){
-    const sx = (Math.random()*2-1)*state.shake;
-    const sy = (Math.random()*2-1)*state.shake;
-
-    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    drawBackground();
-
-    ctx.save(); ctx.translate(sx, sy);
-    // world (no player draw when dead or during deathPause)
-    drawPipesOrbsParticles(!(state.dead || state.deathPause));
     ctx.restore();
 
     if (state.flash>0){
