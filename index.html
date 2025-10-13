@@ -40,7 +40,6 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Character button (safe-area aware) */
   .charbtn{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
@@ -54,7 +53,6 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* --------- Compact character slider --------- */
   .charslider{
     position:fixed;
     left:calc(10px + env(safe-area-inset-left));
@@ -99,8 +97,6 @@
     width:40px; height:40px; display:grid; place-items:center;
     border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
   }
-  .cthumb canvas{ display:block; width:40px; height:40px; }
-  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
 
   .close-tab{
     position:absolute;
@@ -117,7 +113,6 @@
     line-height:16px;
   }
 
-  /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
     background:#2a1620; color:#ffd5dc; border:1px solid #572238;
@@ -137,20 +132,17 @@
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
-  <!-- Compact Character Slider (icons only) -->
   <div class="charslider" id="charSlider" aria-hidden="true">
     <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">▼</button>
     <div class="chars" id="charRow"></div>
   </div>
 
-  <!-- Toast container -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
   'use strict';
 
-  /* ===== MOBILE-SAFE GLOW: fixes iOS blur bug ===== */
   const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -164,7 +156,6 @@
     g.addColorStop(0.35, `rgba(${tint[0]},${tint[1]},${tint[2]},0.35)`);
     g.addColorStop(0.75, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
     g.addColorStop(1.00, 'rgba(0,0,0,0)');
-
     c.globalCompositeOperation = 'lighter';
     c.fillStyle = g;
     c.beginPath();
@@ -173,7 +164,6 @@
     return off;
   }
   const glowSprite = makeGlowSprite();
-
   function drawGlow(ctx, x, y, r, alpha = 1) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -183,7 +173,6 @@
     ctx.restore();
   }
 
-  /* ==================== SMALL TOAST ==================== */
   const toastEl = document.getElementById('toast');
   let toastTimer = null;
   function showToast(msg){
@@ -194,20 +183,16 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  /* ==================== ORIGINAL GAME + SKINS ==================== */
-
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
   const charBtn = document.getElementById('charBtn');
 
-  // slider elements
   const charSlider = document.getElementById('charSlider');
   const charRow    = document.getElementById('charRow');
   const charCloseBtn = document.getElementById('charCloseBtn');
 
-  /* ---------- Robust sizing ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
@@ -225,7 +210,6 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
   sizeToViewport();
 
-  // Prevent double-tap zoom on iOS
   let lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
     const now = Date.now();
@@ -233,32 +217,22 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Skins ----------------------- */
   const makeImg = (src) => {
     const img = new Image();
     img.decoding = 'async';
     img.loading = 'eager';
     img.src = src;
-    img.onerror = () => {
-      img._error = true;
-      console.warn('[Skin image failed to load]', src);
-      showToast('Image not found: ' + src);
-    };
+    img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
     img.onload = () => {
-      if (!img.naturalWidth) {
-        img._error = true;
-        console.warn('[Skin image loaded but width=0]', src);
-        showToast('Bad image: ' + src);
-      } else {
-        console.log('[Skin image OK]', src, img.naturalWidth + 'x' + img.naturalHeight);
-      }
+      if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); }
+      else console.log('[Image OK]', src, img.naturalWidth + 'x' + img.naturalHeight);
     };
     return img;
   };
 
   const skins = [
-    { id:'logo',   type:'image', name:'Logo', img: makeImg('assets/logo.png') },
-    { id:'hat',    type:'image', name:'Hat',  img: makeImg('assets/hatcharicter.png') },
+    { id:'logo',   type:'image', name:'Logo',  img: makeImg('assets/logo.png') },
+    { id:'hat',    type:'image', name:'Hat',   img: makeImg('assets/hatcharicter.png') },
     { id:'seiji',  type:'image', name:'Seiji', img: makeImg('assets/seiji.png') }, 
   ];
 
@@ -309,7 +283,6 @@
   }
   updateCharBtnLabel();
 
-  /* ----------------------- Compact Character Slider ----------------------- */
   function buildCharRow(){
     charRow.innerHTML = '';
     skins.forEach(skin => {
@@ -323,9 +296,9 @@
       if (skin.type === 'image' && skin.img && !skin.img._error){
         const img = document.createElement('img');
         img.src = skin.img.src; img.alt = skin.name;
+        img.style.width = '40px'; img.style.height = '40px'; img.style.objectFit = 'contain';
         thumb.appendChild(img);
       } else {
-        // Red "ERR" placeholder so you see broken images immediately
         const c = document.createElement('div');
         c.style.cssText = 'width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;';
         c.textContent = 'ERR';
@@ -360,21 +333,8 @@
     charSlider.setAttribute('aria-hidden','true');
   }
 
-  charBtn.addEventListener('click', e => {
-    e.preventDefault();
-    if (!state.playing) {
-      const open = charSlider.classList.contains('show');
-      if (open) closeCharSlider(); else openCharSlider();
-    } else {
-      nextSkin(); // in-game fallback
-    }
-  });
-  charCloseBtn.addEventListener('click', () => closeCharSlider());
-
-  /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-  const lerp  = (a,b,t)=> a + (b-a)*t;
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
@@ -390,10 +350,9 @@
     doubleProb: 0.10,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000        // 1s freeze before respawn
+    respawnDelayMs: 1000
   };
 
-  /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
@@ -402,27 +361,16 @@
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
-
-    trailBase:'#cfe3ff',
-    trailBlue:'#4ab7ff',
-    trailPurple:'#b06cff',
-    trailGold:'#ffd54a',
-
-    startTime:0,
-    deathPause:false,
-    deathTimer:0
+    trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ffd54a',
+    startTime:0, deathPause:false, deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
-  /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (charSlider.classList.contains('show')) return;
-    if (!state.playing && !state.dead){
-      start();
-    } else if (state.dead && !state.deathPause){
-      restart();
-    }
+    if (!state.playing && !state.dead){ start(); }
+    else if (state.dead && !state.deathPause){ restart(); }
   }
   window.addEventListener('keydown', e => {
     if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
@@ -438,30 +386,24 @@
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
-  /* ----------------------- World ----------------------- */
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
-
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
-
     const mid = h/2;
     const prev = state.lastGapY ?? mid;
     const safeTop = margin + state.gap/2;
     const safeBot = h - margin - state.gap/2;
-
     const allowedDelta = Math.min(SETTINGS.maxSlopePxPerSec * timeToNext, 170);
     let proposed = prev + rand(-allowedDelta, +allowedDelta);
-
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
     const w = 70;
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
-
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
 
@@ -504,7 +446,6 @@
     return pipe.baseGapY;
   };
 
-  /* ----------------------- Flow ----------------------- */
   function reset(){
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
@@ -518,8 +459,6 @@
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     closeCharSlider();
     updateUI();
-
-    // If saved skin is broken, auto-fallback once
     ensureValidSkin();
   }
   function start(){
@@ -531,12 +470,8 @@
     updateUI();
   }
   function restart(){ reset(); start(); }
+  function updateUI(){ charBtn.style.display = (!state.playing ? '' : 'none'); }
 
-  function updateUI(){
-    charBtn.style.display = (!state.playing ? '' : 'none');
-  }
-
-  /* ----------------------- Trail ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -561,7 +496,6 @@
     }
   }
 
-  /* ----------------------- Collisions ----------------------- */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -572,7 +506,6 @@
   }
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
     let skinColor = '#cfe3ff';
@@ -584,12 +517,8 @@
       const spd = 2.2 + Math.random()*3.2;
       const life = 24 + Math.random()*18;
       state.particles.push({
-        type:'spark',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0,
-        life, maxLife:life,
-        r: 1.6 + Math.random()*2.2,
+        type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2,
         color: (Math.random()<0.6 ? trail : '#9fe9ff')
       });
     }
@@ -598,33 +527,56 @@
       const spd = 2.0 + Math.random()*3.8;
       const life = 26 + Math.random()*22;
       state.particles.push({
-        type:'shard',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
+        type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
         g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life,
-        w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI,
-        color: (Math.random()<0.5 ? skinColor : trail)
+        life, maxLife:life, w: 6 + Math.random()*6, h: 2 + Math.random()*3,
+        rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail)
       });
     }
     state.shake = 10;
     state.flash = 0.5;
   }
 
-  /* ----------------------- Sleeve images for pipes ----------------------- */
-  const sleeveTopImg = makeImg('assets/sleevetop.png');     // <-- change path if needed
-  const sleeveBotImg = makeImg('assets/sleevebottom.png');  // <-- change path if needed
+  /* --------- Sleeve images (no scaling) --------- */
+  const sleeveTopImg = makeImg('assets/sleevetop.png');
+  const sleeveBotImg = makeImg('assets/sleevebottom.png');
 
-  function drawSleeveSection(img, x, y, w, h){
-    if (!img || img._error || !img.naturalWidth || h <= 0) return;
-    // Stretch to fit the pipe section (keeps exact gap while filling full pipe area)
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, x, y, w, h);
+  // Tile an image at its native size inside a clip rect, centered horizontally,
+  // and stacked vertically toward a chosen edge (top or bottom).
+  function tileImageNoScale(img, x, y, w, h, fromEdge /* 'top' | 'bottom' */){
+    if (!img || img._error || !img.naturalWidth || !img.naturalHeight || w <= 0 || h <= 0) return;
+
+    ctx.save();
+    // Clip to the pipe rectangle so overflow is hidden
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+
+    // Center horizontally inside the pipe width (w=70)
+    const ox = Math.floor(x + (w - iw) / 2);
+
+    if (fromEdge === 'bottom'){
+      // Start at the bottom edge and stack upward
+      let yy = y + h - ih;
+      while (yy + ih > y - ih) {
+        ctx.drawImage(img, ox, Math.floor(yy));
+        yy -= ih;
+      }
+    } else {
+      // fromEdge === 'top' -> start at top and stack downward
+      let yy = y;
+      while (yy < y + h) {
+        ctx.drawImage(img, ox, Math.floor(yy));
+        yy += ih;
+      }
+    }
+
+    ctx.restore();
   }
 
-  /* ----------------------- Loop (TIME-BASED) ----------------------- */
   let last = performance.now();
   function loop(t){
     const dt = Math.min(32, t - last); last = t;
@@ -633,7 +585,6 @@
 
     if (state.deathPause){
       state.deathTimer -= dt;
-
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -642,15 +593,10 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
-
-      if (state.deathTimer <= 0){
-        state.deathPause = false;
-        reset();
-      }
+      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
 
@@ -677,8 +623,7 @@
       p.vy += state.gravity * step;
       p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
-      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
-      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
+      p.rot += (Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * 1.4)) - p.rot) * 0.2;
 
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
@@ -705,8 +650,7 @@
                   x:o.x, y:o.y,
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                  g:0, spin:0, life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
                 });
               }
             }
@@ -736,15 +680,11 @@
     if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
-
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-
     explode(p.x, p.y);
-
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
-
     if (msg) msg.style.display = 'none';
     charBtn.style.display = 'none';
     closeCharSlider();
@@ -773,7 +713,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // ----- SLEEVE PIPES -----
+    // ----- SLEEVE PIPES (no scaling; tiled at native size) -----
     for (const pipe of state.pipes){
       const gy = (pipe.type==='moving')
         ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
@@ -784,18 +724,18 @@
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      // Draw sleeve art filling the entire pipe sections
-      // (keeps the exact same gap/collision, just visual replacement)
-      drawSleeveSection(sleeveTopImg, x, yTop, w, hTop);
-      drawSleeveSection(sleeveBotImg, x, yBot, w, hBot);
+      // Top section tiles downward from the very top
+      if (hTop > 0) tileImageNoScale(sleeveTopImg, x, yTop, w, hTop, 'top');
+      // Bottom section tiles upward from the bottom edge of the gap
+      if (hBot > 0) tileImageNoScale(sleeveBotImg, x, yBot, w, hBot, 'bottom');
 
-      // Optional subtle edge separators for clarity (very thin, unobtrusive)
+      // Optional subtle seam lines for readability
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       if (hTop>0) ctx.fillRect(x, yTop+hTop-1, w, 1);
       if (hBot>0) ctx.fillRect(x, yBot, 1, 1);
     }
 
-    // orbs/glow collectibles
+    // orbs
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
@@ -817,9 +757,7 @@
       ctx.fillStyle = prt.color;
 
       if (prt.type === 'shard'){
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
+        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
@@ -838,28 +776,16 @@
       const sAmt = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
       ctx.scale(1 + sAmt, 1 - sAmt);
 
-      // iOS-safe glow
       drawGlow(ctx, 0, 0, sz * 0.78, 0.95);
 
-      const skin = skins[skinIndex];
-      if (skin.type === 'image' && skin.img && !skin.img._error){
+      const s = skins[skinIndex];
+      if (s.type === 'image' && s.img && !s.img._error){
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(skin.img, -sz/2, -sz/2, sz, sz);
-      } else if (skin.type === 'shape'){
-        ctx.fillStyle = skin.color || '#9fc2ff';
-        if (skin.shape === 'diamond'){
-          ctx.beginPath();
-          ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-          ctx.fill();
-        } else {
-          ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
-        }
+        ctx.drawImage(s.img, -sz/2, -sz/2, sz, sz);
       } else {
-        ctx.fillStyle = '#ff9aa2';
-        ctx.beginPath();
-        ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-        ctx.fill();
+        ctx.fillStyle = '#9fc2ff';
+        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
