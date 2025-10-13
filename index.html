@@ -29,6 +29,7 @@
     background:rgba(255,255,255,.08);
     padding:6px 10px; border-radius:10px;
     font-weight:800; letter-spacing:.06em; z-index:3;
+    white-space:nowrap;
   }
   .controls{
     position:absolute;
@@ -57,7 +58,7 @@
 <body>
   <div class="stage">
     <canvas id="game"></canvas>
-    <div class="hud" id="hud">0 • HI 0</div>
+    <div class="hud" id="hud">0 • HI 0 • ⦿ 0</div>
     <div class="controls">SPACE / TAP</div>
     <div class="center" id="msg">TAP / SPACE TO START</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
@@ -136,6 +137,8 @@
 
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
+  const COIN_KEY = 'stary_bird_coins';
+
   const SETTINGS = {
     speedBase: isMobile ? 3.6 : 4.2,
     speedMax:  isMobile ? 8.2 : 8.8,
@@ -148,15 +151,10 @@
     doubleProb: 0.10,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000,       // 1s freeze before respawn
+    respawnDelayMs: 1000,        // 1s freeze before respawn
 
-    // ---- New fun knobs ----
-    perfectPx: 10,        // center window for perfect bonus
-    streakEvery: 5,       // every N pipes => streak bonus
-    streakBonus: 2,       // +score on each streak milestone
-    grazePx: 6,           // distance from gap edge to spawn graze sparks
-    grazeThrottleMs: 120, // don't spam grazes
-    spawnGraceMs: 700     // early immunity at run start
+    // Currency tuning
+    coinPerOrb: 1                // coins gained per orb
   };
 
   /* ----------------------- Game State ----------------------- */
@@ -169,6 +167,7 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
 
+    // Trail palette
     trailBase:   '#cfe3ff',
     trailBlue:   '#4ab7ff',
     trailPurple: '#b06cff',
@@ -180,10 +179,8 @@
     deathPause:false,
     deathTimer:0,
 
-    // ---- New scoring cosmetics ----
-    passedCount:0,
-    streak:0,
-    lastGrazeT:0
+    // Currency
+    coins: Number(localStorage.getItem(COIN_KEY) || 0)
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -286,7 +283,6 @@
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
-    state.passedCount=0; state.streak=0; state.lastGrazeT=0;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
@@ -296,13 +292,14 @@
     if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
-    state.passedCount=0; state.streak=0;
     if (msg) msg.style.display = 'none';
     updateUI();
   }
   function restart(){ reset(); start(); }
 
   function updateUI(){
+    // Shows coins in HUD as well
+    hud.textContent = `${state.score} • HI ${state.hi} • ⦿ ${state.coins}`;
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
@@ -435,90 +432,40 @@
         }
       }
 
-      // Physics
       p.vy += state.gravity * step;
       p.vy = clamp(p.vy, -9, state.maxVy);
       p.y  += p.vy * step;
       p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
       p.rot = lerp(p.rot, p.targetRot, 0.2);
 
-      // Spawn & scroll
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
-      // Score / pass logic + bonuses
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){
-          pipe.passed = true;
-
-          // base point
-          state.score++;
-          state.passedCount++;
-
-          // perfect-center bonus
-          const gy = currentGapY(pipe);
-          if (Math.abs(p.y - gy) <= SETTINGS.perfectPx){
-            state.score += 1;
-            state.flash = Math.min(0.5, state.flash + 0.25);
-            for (let i=0;i<8;i++){
-              const life = Math.random()*10+14;
-              state.particles.push({
-                type:'spark',
-                x: pipe.x + pipe.w + 6, y: gy,
-                vx: Math.cos(i/8*2*Math.PI)*Math.random()*1.8,
-                vy: Math.sin(i/8*2*Math.PI)*Math.random()*1.8,
-                g: 0.03, spin:0,
-                life, maxLife: life,
-                r: Math.random()*1.8+1.2,
-                color: '#9fe9ff'
-              });
-            }
-          }
-
-          // streak bonus
-          if (state.passedCount % SETTINGS.streakEvery === 0){
-            state.score += SETTINGS.streakBonus;
-            state.flash = Math.min(0.5, state.flash + 0.2);
-            for (let i=0;i<10;i++){
-              const life = Math.random()*10+16;
-              state.particles.push({
-                type:'spark',
-                x: p.x, y: p.y,
-                vx: Math.cos(i/10*2*Math.PI)*Math.random()*2.0,
-                vy: Math.sin(i/10*2*Math.PI)*Math.random()*2.0,
-                g: 0.04, spin:0,
-                life, maxLife: life,
-                r: Math.random()*2+1.2,
-                color: '#ffd54a'
-              });
-            }
-          }
-        }
-
-        // Collision with spawn grace
-        if (hitPipe(pipe)) {
-          const sinceStartMs = performance.now() - state.startTime;
-          if (sinceStartMs >= SETTINGS.spawnGraceMs) die();
-          break;
-        }
+        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
+        if (hitPipe(pipe)) { die(); break; }
       }
+      if (!state.dead && hitBounds()) die();
 
-      // Bounds collision with spawn grace
-      if (!state.dead && hitBounds()){
-        const sinceStartMs = performance.now() - state.startTime;
-        if (sinceStartMs >= SETTINGS.spawnGraceMs) die();
-      }
-
-      // Orb pickup
+      // Orb pickup → +2 score (as before) + coins (new)
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
             const dx = p.x - o.x, dy = p.y - o.y;
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true; state.score += 2;
+              o.taken = true;
+
+              // score effect stays
+              state.score += 2;
               if ([10,25,50].includes(state.score)) state.flash = Math.min(0.5, state.flash + 0.35);
+
+              // coins!
+              state.coins += SETTINGS.coinPerOrb;
+              try { localStorage.setItem(COIN_KEY, String(state.coins)); } catch(e){}
+
+              // coin burst particles (gold)
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
@@ -526,48 +473,14 @@
                   x:o.x, y:o.y,
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                  g:0.02, spin:0,
+                  life, maxLife: life,
+                  r: Math.random()*2+1.6,
+                  color:'#ffd54a'
                 });
               }
-            }
-          }
-        }
-      }
-
-      // GRAZE sparks (cosmetic, throttled)
-      if (!state.dead){
-        let grazed = false;
-        for (const pipe of state.pipes){
-          if (p.x + p.w*0.35 <= pipe.x || p.x - p.w*0.35 >= pipe.x + pipe.w) continue;
-          const gy = currentGapY(pipe);
-          const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
-          const topEdge = gy - half;
-          const botEdge = gy + half;
-          if (p.y >= topEdge && p.y <= botEdge){
-            const distTop = Math.abs(p.y - topEdge);
-            const distBot = Math.abs(botEdge - p.y);
-            if (distTop < SETTINGS.grazePx || distBot < SETTINGS.grazePx){
-              grazed = true; break;
-            }
-          }
-        }
-        if (grazed){
-          const nowT = state.t;
-          if (nowT - state.lastGrazeT >= SETTINGS.grazeThrottleMs){
-            state.lastGrazeT = nowT;
-            for (let i=0;i<4;i++){
-              const life = Math.random()*8+10;
-              state.particles.push({
-                type:'spark',
-                x: p.x + (Math.random()<0.5?-8:8), y: p.y + (Math.random()*12-6),
-                vx: (Math.random()<0.5?-1:1)* (0.6 + Math.random()*0.8),
-                vy: (Math.random()-.5)*0.8,
-                g: 0.03, spin:0,
-                life, maxLife: life,
-                r: Math.random()*1.4+1.0,
-                color: '#cfe3ff'
-              });
+              // small HUD flash
+              state.flash = Math.min(0.5, state.flash + 0.15);
             }
           }
         }
@@ -732,7 +645,8 @@
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
-    hud.textContent = `${state.score} • HI ${state.hi}`;
+    // HUD shows coins
+    hud.textContent = `${state.score} • HI ${state.hi} • ⦿ ${state.coins}`;
   }
 
   /* ----------------------- Boot ----------------------- */
