@@ -1,4 +1,4 @@
- <!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -54,6 +54,20 @@
     -webkit-tap-highlight-color:transparent;
   }
 
+  /* Music toggle button (mirrors the char button styling) */
+  #musicBtn{
+    position:absolute;
+    right:calc(12px + env(safe-area-inset-right));
+    bottom:calc(12px + env(safe-area-inset-bottom));
+    z-index:5;
+    padding:10px 14px; border-radius:12px;
+    border:1px solid #2a3a5a;
+    background:linear-gradient(180deg,#111827,#0d1421);
+    color:#eaf2ff; font-weight:800; letter-spacing:.05em;
+    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    -webkit-tap-highlight-color:transparent;
+  }
+
   /* --------- Compact character slider --------- */
   .charslider{
     position:fixed;
@@ -76,8 +90,7 @@
   .charslider.show{ transform:translateY(0); visibility:visible; }
 
   .chars{
-    display:flex; gap:6px; align-items:center;
-    overflow-x:auto; overscroll-behavior:contain; padding:2px;
+    display:flex; gap:6px; align-items:center; overflow-x:auto; overscroll-behavior:contain; padding:2px;
     -webkit-overflow-scrolling:touch;
   }
   .chars::-webkit-scrollbar{ height:6px; }
@@ -126,7 +139,13 @@
     <div class="controls">SPACE / TAP</div>
     <div class="center" id="msg">TAP / SPACE TO START</div>
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
+
+    <!-- Music toggle button -->
+    <button id="musicBtn" type="button" aria-label="Toggle music">🎵</button>
   </div>
+
+  <!-- Background Music (put your file at assets/bgmusic.mp3) -->
+  <audio id="bgMusic" src="assets/bgmusic.mp3" loop preload="auto"></audio>
 
   <!-- Compact Character Slider (icons only) -->
   <div class="charslider" id="charSlider" aria-hidden="true">
@@ -137,6 +156,52 @@
 <script>
 (() => {
   'use strict';
+
+  /* ==================== MUSIC SYSTEM ==================== */
+  const bgMusic  = document.getElementById('bgMusic');
+  const musicBtn = document.getElementById('musicBtn');
+  const MUSIC_KEY = 'stary_bird_music'; // 'on' | 'off'
+  let playing = false;
+
+  // restore previous preference
+  const saved = localStorage.getItem(MUSIC_KEY);
+  if (saved === 'off') {
+    playing = false;
+    musicBtn.textContent = '🔇';
+  } else {
+    // default to ON visual, but most browsers require a tap to start audio
+    musicBtn.textContent = '🎵';
+  }
+
+  // first user gesture: if pref was ON, try to play once
+  const primePlay = () => {
+    if (!playing && (saved === 'on' || saved === null)) {
+      bgMusic.play().then(() => {
+        playing = true;
+        musicBtn.textContent = '🎵';
+      }).catch(() => {/* autoplay blocked until button tap */});
+    }
+    window.removeEventListener('pointerdown', primePlay, { once:true });
+  };
+  window.addEventListener('pointerdown', primePlay, { once:true });
+
+  // button toggles
+  musicBtn.addEventListener('click', () => {
+    if (playing) {
+      bgMusic.pause();
+      playing = false;
+      musicBtn.textContent = '🔇';
+      try { localStorage.setItem(MUSIC_KEY, 'off'); } catch(e){}
+    } else {
+      bgMusic.play().then(() => {
+        playing = true;
+        musicBtn.textContent = '🎵';
+        try { localStorage.setItem(MUSIC_KEY, 'on'); } catch(e){}
+      });
+    }
+  });
+
+  /* ==================== ORIGINAL GAME CODE ==================== */
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
