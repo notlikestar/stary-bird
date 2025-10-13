@@ -54,7 +54,7 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* --------- Compact Character Slider --------- */
+  /* --------- Ultra-compact Character Slider --------- */
   .charslider{
     position:fixed;
     left:calc(10px + env(safe-area-inset-left));
@@ -66,33 +66,34 @@
     border:1px solid #26334d;
     background:linear-gradient(180deg,#101826,#0c1421);
     box-shadow:0 18px 48px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
-    border-radius:14px;
-    padding:6px 8px;
-    max-width:min(560px, 94vw);
-    max-height:100px;  /* stays small */
+    border-radius:12px;
+    padding:6px 6px 8px 6px;
+    max-width:min(520px, 94vw);
+    max-height:78px;  /* smaller */
     margin:0 auto;
     visibility:hidden;
   }
   .charslider.show{ transform:translateY(0); visibility:visible; }
 
-  /* Close tab (little pill sitting above the slider) */
+  /* Close tab: chevron only */
   .close-tab{
     position:absolute;
-    top:-22px;
+    top:-18px;
     left:50%;
     transform:translateX(-50%);
-    height:20px; min-width:64px;
-    padding:0 10px;
-    border-radius:10px;
+    height:18px; min-width:34px;
+    padding:0 6px;
+    border-radius:9px;
     border:1px solid #2a3a5a;
     background:linear-gradient(180deg,#111827,#0d1421);
-    color:#cfe0ff; font-weight:800; font-size:12px; letter-spacing:.03em;
+    color:#cfe0ff; font-weight:900; font-size:12px; letter-spacing:.02em;
     box-shadow:0 8px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+    line-height:16px;
   }
 
   .chars{
-    display:flex; gap:8px; align-items:center;
-    overflow-x:auto; overscroll-behavior:contain; padding:2px 2px 4px 2px;
+    display:flex; gap:6px; align-items:center;
+    overflow-x:auto; overscroll-behavior:contain; padding:2px 2px 2px 2px;
     -webkit-overflow-scrolling:touch;
   }
   .chars::-webkit-scrollbar{ height:6px; }
@@ -100,23 +101,23 @@
 
   .ctile{
     flex:0 0 auto;
-    border:1px solid #26334d; border-radius:12px; padding:6px;
+    border:1px solid #26334d; border-radius:10px; padding:4px;
     background:linear-gradient(180deg,#0f1725,#0c1320);
     display:flex; align-items:center; justify-content:center;
     cursor:pointer; user-select:none;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
     transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
-    width:64px; height:64px;  /* small tile */
+    width:48px; height:48px;  /* smaller tile */
   }
   .ctile:active{ transform:scale(.98); }
   .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
 
   .cthumb{
-    width:52px; height:52px; display:grid; place-items:center;
-    border-radius:10px; background:rgba(255,255,255,.04); overflow:hidden;
+    width:40px; height:40px; display:grid; place-items:center;
+    border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
   }
-  .cthumb canvas{ display:block; width:52px; height:52px; }
-  .cthumb img{ display:block; width:52px; height:52px; object-fit:contain; image-rendering:auto; }
+  .cthumb canvas{ display:block; width:40px; height:40px; }
+  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
 </style>
 </head>
 <body>
@@ -128,9 +129,9 @@
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
-  <!-- Compact Character Slider -->
+  <!-- Ultra-compact Character Slider -->
   <div class="charslider" id="charSlider" aria-hidden="true">
-    <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">Close</button>
+    <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">▼</button>
     <div class="chars" id="charRow"></div>
   </div>
 
@@ -149,7 +150,7 @@
   const charRow    = document.getElementById('charRow');
   const charCloseBtn = document.getElementById('charCloseBtn');
 
-  /* ---------- Robust sizing for iPhone landscape ---------- */
+  /* ---------- Robust sizing ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
@@ -161,6 +162,7 @@
     const ch = Math.max(1, Math.floor(h * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
+    buildStars(); // rebuild starfield density on resize
   }
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
@@ -231,18 +233,18 @@
         img.src = skin.img.src; img.alt = skin.name;
         thumb.appendChild(img);
       } else {
-        const c = document.createElement('canvas'); c.width = 52; c.height = 52;
+        const c = document.createElement('canvas'); c.width = 40; c.height = 40;
         const cx = c.getContext('2d');
         cx.imageSmoothingEnabled = true;
         cx.imageSmoothingQuality = 'high';
-        cx.translate(26,26);
+        cx.translate(20,20);
         cx.fillStyle = (skin.color || '#9fc2ff');
         if (skin.shape === 'diamond'){
           cx.beginPath();
-          cx.moveTo(0,-18); cx.lineTo(18,0); cx.lineTo(0,18); cx.lineTo(-18,0); cx.closePath();
+          cx.moveTo(0,-16); cx.lineTo(16,0); cx.lineTo(0,16); cx.lineTo(-16,0); cx.closePath();
           cx.fill();
         } else {
-          cx.beginPath(); cx.arc(0,0, 18, 0, Math.PI*2); cx.fill();
+          cx.beginPath(); cx.arc(0,0, 16, 0, Math.PI*2); cx.fill();
         }
         thumb.appendChild(c);
       }
@@ -317,18 +319,54 @@
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
-
+    // Trail palette
     trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ffd54a',
+    // Parallax stars
+    starsFar:[], starsNear:[],
     startTime:0, deathPause:false, deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
+  /* ----------------------- Starfield (2 layers + twinkle) ----------------------- */
+  function buildStars(){
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const farCount  = Math.floor((W*H)/30000);   // sparse
+    const nearCount = Math.floor((W*H)/20000);   // denser & brighter
+    state.starsFar.length = 0;
+    state.starsNear.length = 0;
+    for (let i=0;i<farCount;i++){
+      state.starsFar.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        r: rand(0.6,1.2),
+        speed: 0.018 + Math.random()*0.022,  // slow
+        tw: rand(0.001, 0.0025),
+        phase: Math.random()*Math.PI*2,
+        baseA: 0.15 + Math.random()*0.15
+      });
+    }
+    for (let i=0;i<nearCount;i++){
+      state.starsNear.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        r: rand(1.2,1.9),
+        speed: 0.045 + Math.random()*0.035,  // faster
+        tw: rand(0.002, 0.004),
+        phase: Math.random()*Math.PI*2,
+        baseA: 0.25 + Math.random()*0.2
+      });
+    }
+  }
+
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (charSlider.classList.contains('show')) return; // don't start under slider
-    if (!state.playing && !state.dead){ start(); }
-    else if (state.dead && !state.deathPause){ restart(); }
+    if (!state.playing && !state.dead){
+      start();
+    } else if (state.dead && !state.deathPause){
+      restart();
+    }
   }
   window.addEventListener('keydown', e => {
     if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
@@ -421,6 +459,7 @@
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
+    buildStars();
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     closeCharSlider();
     updateUI();
@@ -439,11 +478,11 @@
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
-  /* ----------------------- Trail ----------------------- */
+  /* ----------------------- Trail (glowy milestones) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
+    if (score >= 50) return state.trailGold;   // gold glow
+    if (score >= 25) return state.trailPurple; // purple glow
+    if (score >= 10) return state.trailBlue;   // blue glow
     return state.trailBase;
   }
   function addTrail(){
@@ -459,7 +498,22 @@
         g: 0, spin:0,
         life, maxLife: life,
         r: Math.random()*2+2,
-        color: c
+        color: c,
+        glow: true
+      });
+    }
+    // occasional extra soft glow puff
+    if (Math.random()<0.25){
+      state.particles.push({
+        type:'spark',
+        x: p.x - 28 + Math.random()*8,
+        y: p.y + Math.random()*8 - 4,
+        vx: -state.speed*0.5, vy: (Math.random()-.5)*0.8,
+        g: 0, spin:0,
+        life: 20, maxLife: 20,
+        r: 3.2,
+        color: c,
+        glow: true, bigGlow: true
       });
     }
   }
@@ -493,7 +547,8 @@
         g: 0.08, spin:0,
         life, maxLife:life,
         r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff')
+        color: (Math.random()<0.6 ? trail : '#9fe9ff'),
+        glow:true
       });
     }
     for (let i=0;i<16;i++){
@@ -522,6 +577,7 @@
     const step = dt / 16.67;
     state.t += dt;
 
+    /* death pause */
     if (state.deathPause){
       state.deathTimer -= dt;
       for (const prt of state.particles){
@@ -539,6 +595,7 @@
       return;
     }
 
+    // accel & difficulty
     if (state.playing && !state.dead){
       const sinceStart = Math.max(0, t - state.startTime);
       const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
@@ -549,6 +606,7 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
+      // Orb magnetism (vertical only)
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
@@ -559,23 +617,27 @@
         }
       }
 
+      // Physics
       p.vy += state.gravity * step;
       p.vy = clamp(p.vy, -9, state.maxVy);
       p.y  += p.vy * step;
       p.targetRot = clamp(lerp(-0.6, 0.8, (p.vy+9)/18), -0.8, 0.8);
       p.rot = lerp(p.rot, p.targetRot, 0.2);
 
+      // Spawn & scroll
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
+      // Score & collisions
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
       if (!state.dead && hitBounds()) die();
 
+      // Orb pickup sparkle (cyan)
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
@@ -591,7 +653,7 @@
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
                   g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff', glow:true
                 });
               }
             }
@@ -599,9 +661,11 @@
         }
       }
 
+      // Cleanup
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
+      // Particles
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -642,20 +706,20 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // Parallax starfield
-    ctx.globalAlpha = 0.06;
-    for (let i=0;i<70;i++){
-      const x = (i*130 - (state.t*0.035)%130);
-      const y = 30 + (i*47) % (canvas.clientHeight-60);
-      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
+    // Parallax starfield (precomputed, with twinkle)
+    function drawStars(arr){
+      for (const s of arr){
+        s.x -= s.speed; // scroll left
+        if (s.x < -4) s.x = canvas.clientWidth + 4;
+        const a = s.baseA + Math.sin(state.t*s.tw + s.phase)*0.12;
+        ctx.globalAlpha = Math.max(0, Math.min(0.9, a));
+        ctx.fillStyle = "#e7f0ff";
+        ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.r, s.r);
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 0.12;
-    for (let i=0;i<40;i++){
-      const x = (i*220 - (state.t*0.06)%220);
-      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
-      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
-    }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.7; drawStars(state.starsFar);
+    ctx.globalAlpha = 1;   drawStars(state.starsNear);
 
     ctx.save(); ctx.translate(sx, sy);
 
@@ -690,24 +754,40 @@
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // Particles
+    // Particles (sparks & shards) with soft glow
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
-      ctx.globalAlpha = a;
-      ctx.fillStyle = prt.color;
 
       if (prt.type === 'shard'){
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = prt.color;
+        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
-        ctx.beginPath(); ctx.arc(prt.x, prt.y, prt.r||2, 0, Math.PI*2); ctx.fill();
+        // spark with glow
+        ctx.globalAlpha = Math.min(1, a*1.1);
+        if (prt.glow){
+          ctx.shadowColor = prt.color;
+          ctx.shadowBlur = prt.bigGlow ? 18 : 10;
+        }
+        ctx.fillStyle = prt.color;
+        ctx.beginPath(); ctx.arc(prt.x, prt.y, (prt.r||2) + (prt.bigGlow?0.6:0), 0, Math.PI*2); ctx.fill();
+        // soft outer halo
+        if (prt.glow){
+          const R = (prt.r||2) * (prt.bigGlow? 5.5 : 3.8);
+          const grd = ctx.createRadialGradient(prt.x, prt.y, 0, prt.x, prt.y, R);
+          const col = prt.color;
+          grd.addColorStop(0, col+'ee'); // inner
+          grd.addColorStop(1, col+'00'); // fade
+          ctx.globalAlpha = a*0.35;
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(prt.x, prt.y, R, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
       }
     }
-    ctx.globalAlpha = 1;
 
     // Player
     if (!state.dead && !state.deathPause){
@@ -719,6 +799,7 @@
       const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
       ctx.scale(1 + sAmt, 1 - sAmt);
 
+      // soft glow
       ctx.globalAlpha = 0.25;
       ctx.filter = 'blur(4px)';
       ctx.fillStyle = '#ffffff';
@@ -755,6 +836,7 @@
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
     }
 
+    // HUD
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
