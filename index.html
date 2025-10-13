@@ -40,7 +40,7 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Change Character button */
+  /* Change Character button (safe-area aware) */
   .charbtn{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
@@ -54,7 +54,7 @@
     -webkit-tap-highlight-color:transparent;
   }
 
-  /* --------- Ultra-compact Character Slider --------- */
+  /* --------- Compact character slider --------- */
   .charslider{
     position:fixed;
     left:calc(10px + env(safe-area-inset-left));
@@ -62,20 +62,47 @@
     bottom:calc(10px + env(safe-area-inset-bottom));
     z-index:10;
     transform:translateY(120%);
-    transition:transform .16s ease-out;
+    transition:transform .16s ease-out, visibility .16s ease-out;
     border:1px solid #26334d;
     background:linear-gradient(180deg,#101826,#0c1421);
     box-shadow:0 18px 48px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
     border-radius:12px;
-    padding:6px 6px 8px 6px;
+    padding:6px;
     max-width:min(520px, 94vw);
-    max-height:78px;  /* smaller */
+    max-height:76px;
     margin:0 auto;
     visibility:hidden;
   }
   .charslider.show{ transform:translateY(0); visibility:visible; }
 
-  /* Close tab: chevron only */
+  .chars{
+    display:flex; gap:6px; align-items:center;
+    overflow-x:auto; overscroll-behavior:contain; padding:2px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .chars::-webkit-scrollbar{ height:6px; }
+  .chars::-webkit-scrollbar-thumb{ background:#22314c; border-radius:6px; }
+
+  .ctile{
+    flex:0 0 auto;
+    border:1px solid #26334d; border-radius:10px; padding:4px;
+    background:linear-gradient(180deg,#0f1725,#0c1320);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; user-select:none;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+    width:48px; height:48px;
+  }
+  .ctile:active{ transform:scale(.98); }
+  .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
+
+  .cthumb{
+    width:40px; height:40px; display:grid; place-items:center;
+    border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
+  }
+  .cthumb canvas{ display:block; width:40px; height:40px; }
+  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
+
   .close-tab{
     position:absolute;
     top:-18px;
@@ -90,34 +117,6 @@
     box-shadow:0 8px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
     line-height:16px;
   }
-
-  .chars{
-    display:flex; gap:6px; align-items:center;
-    overflow-x:auto; overscroll-behavior:contain; padding:2px 2px 2px 2px;
-    -webkit-overflow-scrolling:touch;
-  }
-  .chars::-webkit-scrollbar{ height:6px; }
-  .chars::-webkit-scrollbar-thumb{ background:#22314c; border-radius:6px; }
-
-  .ctile{
-    flex:0 0 auto;
-    border:1px solid #26334d; border-radius:10px; padding:4px;
-    background:linear-gradient(180deg,#0f1725,#0c1320);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; user-select:none;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
-    width:48px; height:48px;  /* smaller tile */
-  }
-  .ctile:active{ transform:scale(.98); }
-  .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
-
-  .cthumb{
-    width:40px; height:40px; display:grid; place-items:center;
-    border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
-  }
-  .cthumb canvas{ display:block; width:40px; height:40px; }
-  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
 </style>
 </head>
 <body>
@@ -129,7 +128,7 @@
     <button class="charbtn" id="charBtn" type="button">Change Character</button>
   </div>
 
-  <!-- Ultra-compact Character Slider -->
+  <!-- Compact Character Slider (icons only) -->
   <div class="charslider" id="charSlider" aria-hidden="true">
     <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">▼</button>
     <div class="chars" id="charRow"></div>
@@ -162,7 +161,6 @@
     const ch = Math.max(1, Math.floor(h * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
-    buildStars(); // rebuild starfield density on resize
   }
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
@@ -251,7 +249,6 @@
 
       tile.appendChild(thumb);
       tile.addEventListener('click', () => { setSkinById(skin.id); closeCharSlider(); });
-
       charRow.appendChild(tile);
     });
     markSelectedTile();
@@ -307,7 +304,7 @@
     doubleProb: 0.10,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000
+    respawnDelayMs: 1000        // 1s freeze before respawn
   };
 
   /* ----------------------- Game State ----------------------- */
@@ -319,45 +316,21 @@
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
+
     // Trail palette
-    trailBase:'#cfe3ff', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ffd54a',
-    // Parallax stars
-    starsFar:[], starsNear:[],
-    startTime:0, deathPause:false, deathTimer:0
+    trailBase:'#cfe3ff',
+    trailBlue:'#4ab7ff',
+    trailPurple:'#b06cff',
+    trailGold:'#ffd54a',
+
+    startTime:0,
+
+    // Death pause flags
+    deathPause:false,
+    deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
-
-  /* ----------------------- Starfield (2 layers + twinkle) ----------------------- */
-  function buildStars(){
-    const W = canvas.clientWidth, H = canvas.clientHeight;
-    const farCount  = Math.floor((W*H)/30000);   // sparse
-    const nearCount = Math.floor((W*H)/20000);   // denser & brighter
-    state.starsFar.length = 0;
-    state.starsNear.length = 0;
-    for (let i=0;i<farCount;i++){
-      state.starsFar.push({
-        x: Math.random()*W,
-        y: Math.random()*H,
-        r: rand(0.6,1.2),
-        speed: 0.018 + Math.random()*0.022,  // slow
-        tw: rand(0.001, 0.0025),
-        phase: Math.random()*Math.PI*2,
-        baseA: 0.15 + Math.random()*0.15
-      });
-    }
-    for (let i=0;i<nearCount;i++){
-      state.starsNear.push({
-        x: Math.random()*W,
-        y: Math.random()*H,
-        r: rand(1.2,1.9),
-        speed: 0.045 + Math.random()*0.035,  // faster
-        tw: rand(0.002, 0.004),
-        phase: Math.random()*Math.PI*2,
-        baseA: 0.25 + Math.random()*0.2
-      });
-    }
-  }
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
@@ -459,7 +432,6 @@
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
-    buildStars();
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     closeCharSlider();
     updateUI();
@@ -468,21 +440,22 @@
     if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
-    closeCharSlider();
     if (msg) msg.style.display = 'none';
+    closeCharSlider();
     updateUI();
   }
   function restart(){ reset(); start(); }
 
   function updateUI(){
+    // Show character button only when not playing (start/death screens)
     charBtn.style.display = (!state.playing ? '' : 'none');
   }
 
-  /* ----------------------- Trail (glowy milestones) ----------------------- */
+  /* ----------------------- Trail (discrete milestones) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;   // gold glow
-    if (score >= 25) return state.trailPurple; // purple glow
-    if (score >= 10) return state.trailBlue;   // blue glow
+    if (score >= 50) return state.trailGold;
+    if (score >= 25) return state.trailPurple;
+    if (score >= 10) return state.trailBlue;
     return state.trailBase;
   }
   function addTrail(){
@@ -498,22 +471,7 @@
         g: 0, spin:0,
         life, maxLife: life,
         r: Math.random()*2+2,
-        color: c,
-        glow: true
-      });
-    }
-    // occasional extra soft glow puff
-    if (Math.random()<0.25){
-      state.particles.push({
-        type:'spark',
-        x: p.x - 28 + Math.random()*8,
-        y: p.y + Math.random()*8 - 4,
-        vx: -state.speed*0.5, vy: (Math.random()-.5)*0.8,
-        g: 0, spin:0,
-        life: 20, maxLife: 20,
-        r: 3.2,
-        color: c,
-        glow: true, bigGlow: true
+        color: c
       });
     }
   }
@@ -547,8 +505,7 @@
         g: 0.08, spin:0,
         life, maxLife:life,
         r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff'),
-        glow:true
+        color: (Math.random()<0.6 ? trail : '#9fe9ff')
       });
     }
     for (let i=0;i<16;i++){
@@ -567,7 +524,7 @@
       });
     }
     state.shake = 10;
-    state.flash = 0.5;
+    state.flash = 0.5; // keep flash ONLY for death/explosion
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -577,9 +534,10 @@
     const step = dt / 16.67;
     state.t += dt;
 
-    /* death pause */
+    /* ---- Death pause: animate particles only, freeze world, then reset ---- */
     if (state.deathPause){
       state.deathTimer -= dt;
+
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -588,14 +546,19 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
+
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
-      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
+
+      if (state.deathTimer <= 0){
+        state.deathPause = false;
+        reset(); // back to start screen (hover preview)
+      }
       return;
     }
 
-    // accel & difficulty
+    // Micro-acceleration & difficulty over time
     if (state.playing && !state.dead){
       const sinceStart = Math.max(0, t - state.startTime);
       const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
@@ -637,7 +600,7 @@
       }
       if (!state.dead && hitBounds()) die();
 
-      // Orb pickup sparkle (cyan)
+      // Orb pickup (+2 score, sparkle)
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
@@ -653,7 +616,7 @@
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
                   g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff', glow:true
+                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
                 });
               }
             }
@@ -681,7 +644,7 @@
     requestAnimationFrame(loop);
   }
 
-  /* ----------------------- Death ----------------------- */
+  /* ----------------------- Death: explosion + 1s pause ----------------------- */
   function die(){
     if (state.dead || state.deathPause) return;
     state.dead = true;
@@ -691,6 +654,7 @@
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
 
     explode(p.x, p.y);
+
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
 
@@ -706,20 +670,20 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // Parallax starfield (precomputed, with twinkle)
-    function drawStars(arr){
-      for (const s of arr){
-        s.x -= s.speed; // scroll left
-        if (s.x < -4) s.x = canvas.clientWidth + 4;
-        const a = s.baseA + Math.sin(state.t*s.tw + s.phase)*0.12;
-        ctx.globalAlpha = Math.max(0, Math.min(0.9, a));
-        ctx.fillStyle = "#e7f0ff";
-        ctx.fillRect(Math.floor(s.x), Math.floor(s.y), s.r, s.r);
-      }
-      ctx.globalAlpha = 1;
+    // Parallax starfield (two layers)
+    ctx.globalAlpha = 0.06;
+    for (let i=0;i<70;i++){
+      const x = (i*130 - (state.t*0.035)%130);
+      const y = 30 + (i*47) % (canvas.clientHeight-60);
+      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
     }
-    ctx.globalAlpha = 0.7; drawStars(state.starsFar);
-    ctx.globalAlpha = 1;   drawStars(state.starsNear);
+    ctx.globalAlpha = 0.12;
+    for (let i=0;i<40;i++){
+      const x = (i*220 - (state.t*0.06)%220);
+      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
+      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
+    }
+    ctx.globalAlpha = 1;
 
     ctx.save(); ctx.translate(sx, sy);
 
@@ -754,42 +718,26 @@
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // Particles (sparks & shards) with soft glow
+    // Particles (sparks & shards)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = prt.color;
 
       if (prt.type === 'shard'){
-        ctx.globalAlpha = a;
-        ctx.fillStyle = prt.color;
-        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
+        ctx.save();
+        ctx.translate(prt.x, prt.y);
+        ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
-        // spark with glow
-        ctx.globalAlpha = Math.min(1, a*1.1);
-        if (prt.glow){
-          ctx.shadowColor = prt.color;
-          ctx.shadowBlur = prt.bigGlow ? 18 : 10;
-        }
-        ctx.fillStyle = prt.color;
-        ctx.beginPath(); ctx.arc(prt.x, prt.y, (prt.r||2) + (prt.bigGlow?0.6:0), 0, Math.PI*2); ctx.fill();
-        // soft outer halo
-        if (prt.glow){
-          const R = (prt.r||2) * (prt.bigGlow? 5.5 : 3.8);
-          const grd = ctx.createRadialGradient(prt.x, prt.y, 0, prt.x, prt.y, R);
-          const col = prt.color;
-          grd.addColorStop(0, col+'ee'); // inner
-          grd.addColorStop(1, col+'00'); // fade
-          ctx.globalAlpha = a*0.35;
-          ctx.fillStyle = grd;
-          ctx.beginPath(); ctx.arc(prt.x, prt.y, R, 0, Math.PI*2); ctx.fill();
-        }
-        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(prt.x, prt.y, prt.r||2, 0, Math.PI*2); ctx.fill();
       }
     }
+    ctx.globalAlpha = 1;
 
-    // Player
+    // Player — draw only when alive (hide during death pause to showcase explosion)
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
@@ -799,7 +747,7 @@
       const sAmt = clamp(Math.abs(p.vy)/12 * 0.15, 0, 0.18);
       ctx.scale(1 + sAmt, 1 - sAmt);
 
-      // soft glow
+      // soft glow (no border)
       ctx.globalAlpha = 0.25;
       ctx.filter = 'blur(4px)';
       ctx.fillStyle = '#ffffff';
