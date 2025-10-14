@@ -125,6 +125,7 @@
     const ch = Math.max(1, Math.floor(h * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
+    rebuildStars();         // keep stars crisp on resize
   }
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
@@ -148,7 +149,7 @@
     img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
     img.onload = () => {
       if (!img.naturalWidth) { img._error = true; console.warn('[Bad image: width=0]', src); showToast('Bad image: ' + src); }
-      else { console.log('[Image OK]', src, img.naturalWidth + 'x' + img.naturalHeight); }
+      else { /* ok */ }
     };
     return img;
   }
@@ -192,7 +193,10 @@
 
     startTime:0,
     deathPause:false,
-    deathTimer:0
+    deathTimer:0,
+
+    // starfield layers
+    starLayers: []
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -285,6 +289,62 @@
     return pipe.baseGapY;
   };
 
+  /* ----------------------- Starfield ----------------------- */
+  function rebuildStars(){
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    // define layers once with counts proportional to area (so density feels constant)
+    const area = (W*H) / (390*800); // normalize around 390x800
+    const base = Math.max(1, area);
+
+    const layersSpec = [
+      { count: Math.floor(140*base), size:[0.7,1.4], speed:0.12, alpha:[0.25,0.45], color:'#bcd1ff', twinkle:0.25 },
+      { count: Math.floor(90*base),  size:[1.2,2.0], speed:0.25, alpha:[0.35,0.6],  color:'#e7f0ff', twinkle:0.35 },
+      { count: Math.floor(45*base),  size:[1.8,2.8], speed:0.45, alpha:[0.55,0.9],  color:'#fff7cc', twinkle:0.5 }
+    ];
+
+    state.starLayers = layersSpec.map(spec => {
+      const stars = new Array(spec.count).fill(0).map(()=>({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        r: rand(spec.size[0], spec.size[1]),
+        a: rand(spec.alpha[0], spec.alpha[1]),
+        phase: Math.random()*Math.PI*2
+      }));
+      return { ...spec, stars };
+    });
+  }
+  rebuildStars();
+
+  function drawStars(dt){
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    for (const layer of state.starLayers){
+      const drift = (layer.speed * dt * 0.06) + (state.playing ? state.speed*0.02*layer.speed : 0);
+      for (const s of layer.stars){
+        // drift left, wrap around
+        s.x -= drift;
+        if (s.x < -3) { s.x = W + 3; s.y = (s.y + Math.random()*40 - 20 + H) % H; }
+
+        // subtle twinkle
+        const tw = 0.5 + 0.5*Math.sin(state.t*0.001*layer.twinkle + s.phase);
+        const a = s.a * (0.7 + 0.3*tw);
+
+        ctx.globalAlpha = a;
+        ctx.fillStyle = layer.color;
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), s.r, s.r);
+
+        // tiny bloom for nearer stars (layer 3)
+        if (layer.speed > 0.4){
+          const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r*4);
+          g.addColorStop(0,'rgba(255,255,255,0.15)');
+          g.addColorStop(1,'rgba(255,255,255,0)');
+          ctx.fillStyle = g; ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r*4, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   /* ----------------------- Flow ----------------------- */
   function reset(){
     state.playing=false; state.dead=false;
@@ -309,7 +369,7 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // No character/mute buttons to toggle anymore.
+    // nothing to toggle here now
   }
 
   /* ----------------------- Trail ----------------------- */
@@ -406,7 +466,7 @@
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
 
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-      draw();
+      draw(dt);
       requestAnimationFrame(loop);
 
       if (state.deathTimer <= 0){
@@ -491,7 +551,7 @@
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-    draw();
+    draw(dt);
     requestAnimationFrame(loop);
   }
 
@@ -511,41 +571,96 @@
     if (msg) msg.style.display = 'none';
   }
 
-  function draw(){
+  /* ----------------------- Pipe visuals ----------------------- */
+  function pipeGradient(x, w){
+    const g = ctx.createLinearGradient(x, 0, x + w, 0); // horizontal
+    // dark rim -> mid -> bright core -> mid -> dark rim
+    g.addColorStop(0.00, '#0e2640');
+    g.addColorStop(0.12, '#12324f');
+    g.addColorStop(0.50, '#1b5d8d');
+    g.addColorStop(0.88, '#12324f');
+    g.addColorStop(1.00, '#0d2036');
+    return g;
+  }
+
+  function drawPipeSection(x, y, w, h){
+    if (h <= 0) return;
+    // main body
+    ctx.fillStyle = pipeGradient(x, w);
+    ctx.fillRect(x, y, w, h);
+
+    // soft inner shadow (left & right)
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    const leftFade  = ctx.createLinearGradient(x, y, x+w*0.22, y);
+    leftFade.addColorStop(0,'rgba(0,0,0,0.45)');
+    leftFade.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = leftFade;
+    ctx.fillRect(x, y, w*0.22, h);
+
+    const rightFade = ctx.createLinearGradient(x+w*0.78, y, x+w, y);
+    rightFade.addColorStop(0,'rgba(0,0,0,0)');
+    rightFade.addColorStop(1,'rgba(0,0,0,0.45)');
+    ctx.fillStyle = rightFade;
+    ctx.fillRect(x+w*0.78, y, w*0.22, h);
+    ctx.restore();
+
+    // glossy strip
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    const glossX = x + w*0.36;
+    const glossG = ctx.createLinearGradient(glossX-2, y, glossX+8, y);
+    glossG.addColorStop(0,'rgba(255,255,255,0)');
+    glossG.addColorStop(1,'rgba(255,255,255,0.55)');
+    ctx.fillStyle = glossG;
+    ctx.fillRect(glossX, y, 10, h);
+    ctx.restore();
+
+    // subtle edge line
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.floor(x)+0.5, Math.floor(y)+0.5, Math.floor(w)-1, Math.floor(h)-1);
+  }
+
+  function drawGapCap(x, y, w, thickness = 5){
+    // little cap/trim at the rim of the gap
+    const capGrad = ctx.createLinearGradient(x, y, x+w, y);
+    capGrad.addColorStop(0,'#0a2339');
+    capGrad.addColorStop(0.5,'#1d78b6');
+    capGrad.addColorStop(1,'#0a2339');
+    ctx.fillStyle = capGrad;
+    ctx.fillRect(x, y, w, thickness);
+
+    // highlight line
+    ctx.fillStyle = 'rgba(200,240,255,0.3)';
+    ctx.fillRect(x, y, w, 1);
+  }
+
+  function draw(dt){
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    ctx.globalAlpha = 0.06;
-    for (let i=0;i<70;i++){
-      const x = (i*130 - (state.t*0.035)%130);
-      const y = 30 + (i*47) % (canvas.clientHeight-60);
-      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
-    }
-    ctx.globalAlpha = 0.12;
-    for (let i=0;i<40;i++){
-      const x = (i*220 - (state.t*0.06)%220);
-      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
-      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
-    }
-    ctx.globalAlpha = 1;
+    // starfield (multi-layer, twinkle, parallax)
+    drawStars(dt);
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // Pipes
+    // Pipes with horizontal gradient + caps
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
-      ctx.fillStyle = "#12324f";
-      if (hTop>0) ctx.fillRect(x, yTop, w, hTop);
-      if (hBot>0) ctx.fillRect(x, yBot, w, hBot);
-      ctx.fillStyle = "#1a476f";
-      if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
-      if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
+
+      drawPipeSection(x, yTop, w, hTop);
+      drawPipeSection(x, yBot, w, hBot);
+
+      // gap caps
+      if (hTop>0) drawGapCap(x, yTop+hTop-5, w, 5);
+      if (hBot>0) drawGapCap(x, yBot,        w, 5);
     }
 
     // Orbs
