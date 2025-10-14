@@ -139,7 +139,7 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Single Character (ghost.png) ----------------------- */
+  /* ----------------------- Images ----------------------- */
   function makeImg(src) {
     const img = new Image();
     img.decoding = 'async';
@@ -148,11 +148,39 @@
     img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
     img.onload = () => {
       if (!img.naturalWidth) { img._error = true; console.warn('[Bad image: width=0]', src); showToast('Bad image: ' + src); }
-      else { /* ok */ }
+      else { console.log('[Image OK]', src, img.naturalWidth + 'x' + img.naturalHeight); }
     };
     return img;
   }
-  const ghostImg = makeImg('assets/ghost.png');
+  const ghostImg      = makeImg('assets/ghost.png');
+
+  // NEW: sleeve assets (exact sizes: body 70x90, cuff 70x125)
+  const sleeveBodyImg = makeImg('assets/sleevebody.png');
+  const sleeveCuffImg = makeImg('assets/sleevecuff.png');
+
+  let PIPE_W = 70;        // exact width used for pipes
+  let BODY_H = 90;        // sleeve body tile height
+  let CUFF_H = 125;       // sleeve cuff height
+
+  sleeveBodyImg.onload = () => {
+    if (sleeveBodyImg.naturalWidth) {
+      PIPE_W = sleeveBodyImg.naturalWidth; // should be 70
+      BODY_H = sleeveBodyImg.naturalHeight; // 90
+    }
+  };
+  sleeveCuffImg.onload = () => {
+    if (sleeveCuffImg.naturalWidth) {
+      // confirm width and set cuff height
+      PIPE_W = sleeveCuffImg.naturalWidth; // should also be 70
+      CUFF_H = sleeveCuffImg.naturalHeight; // 125
+      // If some pipes spawned before load, keep their centers but fix width
+      for (const pp of state.pipes) {
+        const cx = pp.x + pp.w/2;
+        pp.w = PIPE_W;
+        pp.x = Math.round(cx - PIPE_W/2);
+      }
+    }
+  };
 
   /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -223,7 +251,6 @@
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
 
-    // FIXED: declare baseMax properly (no implicit globals in 'use strict')
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
@@ -239,7 +266,9 @@
 
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 70;
+
+    // use the sleeve width (exactly 70) for pipes
+    const w = PIPE_W;
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
@@ -286,123 +315,6 @@
     return pipe.baseGapY;
   };
 
-  /* ===== Hoodie sleeve renderer (no images) ===== */
-  let _ribPattern = null;
-  function getRibPattern(ctx){
-    if (_ribPattern) return _ribPattern;
-    const off = document.createElement('canvas');
-    off.width = 8; off.height = 16;
-    const c = off.getContext('2d');
-    // vertical ribs: alternating columns
-    c.fillStyle = '#0b1627'; c.fillRect(0,0,off.width,off.height);
-    c.fillStyle = '#0e1e34'; c.fillRect(0,0,3,off.height);
-    c.fillStyle = '#091427'; c.fillRect(3,0,2,off.height);
-    c.fillStyle = '#0f213b'; c.fillRect(5,0,2,off.height);
-    c.fillStyle = '#071223'; c.fillRect(7,0,1,off.height);
-    _ribPattern = ctx.createPattern(off, 'repeat');
-    return _ribPattern;
-  }
-
-  function drawSleeve(ctx, x, y, w, h, openingDir){
-    if (h <= 0) return;
-
-    // Body: cylindrical horizontal gradient
-    const g = ctx.createLinearGradient(x, 0, x + w, 0);
-    g.addColorStop(0.00, '#050b14');
-    g.addColorStop(0.18, '#0b182b');
-    g.addColorStop(0.50, '#102441');
-    g.addColorStop(0.82, '#0b182b');
-    g.addColorStop(1.00, '#050b14');
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-
-    // side vignette
-    ctx.save();
-    ctx.globalAlpha = 0.25;
-    const side = ctx.createLinearGradient(x, 0, x + w, 0);
-    side.addColorStop(0.0, 'rgba(0,0,0,0.65)');
-    side.addColorStop(0.12,'rgba(0,0,0,0.25)');
-    side.addColorStop(0.88,'rgba(0,0,0,0.25)');
-    side.addColorStop(1.0, 'rgba(0,0,0,0.65)');
-    ctx.fillStyle = side;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-
-    // micro highlight band
-    ctx.save();
-    ctx.globalAlpha = 0.08;
-    const spec = ctx.createLinearGradient(x, 0, x + w, 0);
-    spec.addColorStop(0.45, 'rgba(255,255,255,0.55)');
-    spec.addColorStop(0.55, 'rgba(255,255,255,0.00)');
-    ctx.fillStyle = spec;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-
-    // Cuff
-    const cuffH = Math.min(26, Math.max(18, h * 0.16));
-    const cuffY = (openingDir === 'down') ? (y + h - cuffH) : y;
-
-    const cuffGrad = ctx.createLinearGradient(x, cuffY, x, cuffY + cuffH);
-    if (openingDir === 'down'){
-      cuffGrad.addColorStop(0.00, '#0c1a2f');
-      cuffGrad.addColorStop(1.00, '#081327');
-    } else {
-      cuffGrad.addColorStop(0.00, '#081327');
-      cuffGrad.addColorStop(1.00, '#0c1a2f');
-    }
-    ctx.fillStyle = cuffGrad;
-    ctx.fillRect(x, cuffY, w, cuffH);
-
-    // ribbed texture
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = getRibPattern(ctx);
-    ctx.fillRect(x, cuffY, w, cuffH);
-    ctx.restore();
-
-    // inner rim shadow
-    ctx.save();
-    const rim = ctx.createLinearGradient(x, cuffY, x, cuffY + 10);
-    if (openingDir === 'down'){
-      rim.addColorStop(0.00, 'rgba(0,0,0,0.55)');
-      rim.addColorStop(1.00, 'rgba(0,0,0,0.00)');
-    } else {
-      rim.addColorStop(0.00, 'rgba(0,0,0,0.00)');
-      rim.addColorStop(1.00, 'rgba(0,0,0,0.55)');
-    }
-    ctx.fillStyle = rim;
-    ctx.fillRect(x, cuffY, w, 10);
-    ctx.restore();
-
-    // lip highlight
-    ctx.save();
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = '#cfe3ff';
-    if (openingDir === 'down') {
-      ctx.fillRect(x + 2, cuffY + 2, w - 4, 1.3);
-    } else {
-      ctx.fillRect(x + 2, cuffY + cuffH - 3, w - 4, 1.3);
-    }
-    ctx.restore();
-
-    // soft bulge near opening
-    ctx.save();
-    ctx.globalAlpha = 0.10;
-    const bulge = ctx.createRadialGradient(
-      x + w/2,
-      (openingDir === 'down') ? (y + h - cuffH - 10) : (y + cuffH + 10),
-      w*0.10,
-      x + w/2,
-      (openingDir === 'down') ? (y + h + 30) : (y - 30),
-      w*0.9
-    );
-    bulge.addColorStop(0, 'rgba(0,0,0,0.35)');
-    bulge.addColorStop(1, 'rgba(0,0,0,0.00)');
-    ctx.fillStyle = bulge;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-  }
-
   /* ----------------------- Flow ----------------------- */
   function reset(){
     state.playing=false; state.dead=false;
@@ -426,7 +338,9 @@
   }
   function restart(){ reset(); start(); }
 
-  function updateUI(){}
+  function updateUI(){
+    // No character/mute buttons to toggle anymore.
+  }
 
   /* ----------------------- Trail ----------------------- */
   function colorForScore(score){
@@ -467,7 +381,7 @@
   /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
-    let skinColor = '#cfe3ff';
+    let skinColor = '#cfe3ff'; // fallback particle color
 
     for (let i=0;i<28;i++){
       const ang = Math.random()*Math.PI*2;
@@ -500,6 +414,66 @@
     }
     state.shake = 10;
     state.flash = 0.5;
+  }
+
+  /* ----------------------- Sleeve pipe rendering helpers ----------------------- */
+  function drawTopPipeSection(ctx, x, yTop, w, hTop) {
+    if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffImg) return;
+
+    ctx.imageSmoothingEnabled = false;
+
+    const tileW = PIPE_W;
+    x = Math.round(x); yTop = Math.round(yTop);
+    if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
+
+    // Place cuff against the gap (at bottom of this top section)
+    const cuffDrawH = Math.min(CUFF_H, hTop);
+    const cuffSrcY  = CUFF_H - cuffDrawH;               // crop from bottom if short
+    const cuffDestY = yTop + hTop - cuffDrawH;          // bottom-aligned
+    ctx.drawImage(sleeveCuffImg, 0, cuffSrcY, tileW, cuffDrawH, x, cuffDestY, tileW, cuffDrawH);
+
+    // Fill remaining area above the cuff with body tiles going upward
+    let remaining = hTop - cuffDrawH;
+    let y = cuffDestY; // start just above the cuff
+    while (remaining > 0) {
+      const sliceH = Math.min(BODY_H, remaining);
+      // draw bottom-aligned slice of body
+      ctx.drawImage(
+        sleeveBodyImg,
+        0, BODY_H - sliceH, tileW, sliceH,
+        x, y - sliceH, tileW, sliceH
+      );
+      y -= sliceH;
+      remaining -= sliceH;
+    }
+  }
+
+  function drawBottomPipeSection(ctx, x, yBot, w, hBot) {
+    if (hBot <= 0 || !sleeveBodyImg || !sleeveCuffImg) return;
+
+    ctx.imageSmoothingEnabled = false;
+
+    const tileW = PIPE_W;
+    x = Math.round(x); yBot = Math.round(yBot);
+    if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
+
+    // Place cuff against the gap (at top of this bottom section)
+    const cuffDrawH = Math.min(CUFF_H, hBot);
+    ctx.drawImage(sleeveCuffImg, 0, 0, tileW, cuffDrawH, x, yBot, tileW, cuffDrawH);
+
+    // Fill remaining area below the cuff with body tiles going downward
+    let remaining = hBot - cuffDrawH;
+    let y = yBot + cuffDrawH;
+    while (remaining > 0) {
+      const sliceH = Math.min(BODY_H, remaining);
+      ctx.drawImage(
+        sleeveBodyImg,
+        0, 0, tileW, sliceH,
+        x, y, tileW, sliceH
+      );
+      y += sliceH;
+      remaining -= sliceH;
+    }
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -649,7 +623,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // Hoodie-sleeve pipes (no seam)
+    // Pipes -> draw sleeve cuff + body instead of rectangles
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -657,8 +631,19 @@
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      if (hTop>0) drawSleeve(ctx, x, yTop, w, hTop, 'down'); // opening faces gap
-      if (hBot>0) drawSleeve(ctx, x, yBot, w, hBot, 'up');   // opening faces gap
+      if (sleeveBodyImg.complete && sleeveCuffImg.complete &&
+          !sleeveBodyImg._error && !sleeveCuffImg._error) {
+        drawTopPipeSection(ctx, x, yTop, w, hTop);
+        drawBottomPipeSection(ctx, x, yBot, w, hBot);
+      } else {
+        // fallback while assets load
+        ctx.fillStyle = "#12324f";
+        if (hTop>0) ctx.fillRect(x, yTop, w, hTop);
+        if (hBot>0) ctx.fillRect(x, yBot, w, hBot);
+        ctx.fillStyle = "#1a476f";
+        if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
+        if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
+      }
     }
 
     // Orbs
@@ -710,6 +695,7 @@
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
+        // simple fallback shape
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
