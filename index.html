@@ -224,8 +224,8 @@
     const h = canvas.clientHeight, margin = 60;
 
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    const baseMax = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, baseMax));
+    the_baseMax = state.maxSpawnFrames * (4.2/state.speed);
+    state.spawn = Math.floor(rand(baseMin, the_baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
 
     const mid = h/2;
@@ -285,6 +285,123 @@
     return pipe.baseGapY;
   };
 
+  /* ===== Hoodie sleeve renderer (no images) ===== */
+  let _ribPattern = null;
+  function getRibPattern(ctx){
+    if (_ribPattern) return _ribPattern;
+    const off = document.createElement('canvas');
+    off.width = 8; off.height = 16;
+    const c = off.getContext('2d');
+    // vertical ribs: alternating columns
+    c.fillStyle = '#0b1627'; c.fillRect(0,0,off.width,off.height);
+    c.fillStyle = '#0e1e34'; c.fillRect(0,0,3,off.height);
+    c.fillStyle = '#091427'; c.fillRect(3,0,2,off.height);
+    c.fillStyle = '#0f213b'; c.fillRect(5,0,2,off.height);
+    c.fillStyle = '#071223'; c.fillRect(7,0,1,off.height);
+    _ribPattern = ctx.createPattern(off, 'repeat');
+    return _ribPattern;
+  }
+
+  function drawSleeve(ctx, x, y, w, h, openingDir){
+    if (h <= 0) return;
+
+    // Body: cylindrical horizontal gradient
+    const g = ctx.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0.00, '#050b14');
+    g.addColorStop(0.18, '#0b182b');
+    g.addColorStop(0.50, '#102441');
+    g.addColorStop(0.82, '#0b182b');
+    g.addColorStop(1.00, '#050b14');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+
+    // side vignette
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    const side = ctx.createLinearGradient(x, 0, x + w, 0);
+    side.addColorStop(0.0, 'rgba(0,0,0,0.65)');
+    side.addColorStop(0.12,'rgba(0,0,0,0.25)');
+    side.addColorStop(0.88,'rgba(0,0,0,0.25)');
+    side.addColorStop(1.0, 'rgba(0,0,0,0.65)');
+    ctx.fillStyle = side;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+
+    // micro highlight band
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    const spec = ctx.createLinearGradient(x, 0, x + w, 0);
+    spec.addColorStop(0.45, 'rgba(255,255,255,0.55)');
+    spec.addColorStop(0.55, 'rgba(255,255,255,0.00)');
+    ctx.fillStyle = spec;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+
+    // Cuff
+    const cuffH = Math.min(26, Math.max(18, h * 0.16));
+    const cuffY = (openingDir === 'down') ? (y + h - cuffH) : y;
+
+    const cuffGrad = ctx.createLinearGradient(x, cuffY, x, cuffY + cuffH);
+    if (openingDir === 'down'){
+      cuffGrad.addColorStop(0.00, '#0c1a2f');
+      cuffGrad.addColorStop(1.00, '#081327');
+    } else {
+      cuffGrad.addColorStop(0.00, '#081327');
+      cuffGrad.addColorStop(1.00, '#0c1a2f');
+    }
+    ctx.fillStyle = cuffGrad;
+    ctx.fillRect(x, cuffY, w, cuffH);
+
+    // ribbed texture
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = getRibPattern(ctx);
+    ctx.fillRect(x, cuffY, w, cuffH);
+    ctx.restore();
+
+    // inner rim shadow
+    ctx.save();
+    const rim = ctx.createLinearGradient(x, cuffY, x, cuffY + 10);
+    if (openingDir === 'down'){
+      rim.addColorStop(0.00, 'rgba(0,0,0,0.55)');
+      rim.addColorStop(1.00, 'rgba(0,0,0,0.00)');
+    } else {
+      rim.addColorStop(0.00, 'rgba(0,0,0,0.00)');
+      rim.addColorStop(1.00, 'rgba(0,0,0,0.55)');
+    }
+    ctx.fillStyle = rim;
+    ctx.fillRect(x, cuffY, w, 10);
+    ctx.restore();
+
+    // lip highlight
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = '#cfe3ff';
+    if (openingDir === 'down') {
+      ctx.fillRect(x + 2, cuffY + 2, w - 4, 1.3);
+    } else {
+      ctx.fillRect(x + 2, cuffY + cuffH - 3, w - 4, 1.3);
+    }
+    ctx.restore();
+
+    // soft bulge near opening
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    const bulge = ctx.createRadialGradient(
+      x + w/2,
+      (openingDir === 'down') ? (y + h - cuffH - 10) : (y + cuffH + 10),
+      w*0.10,
+      x + w/2,
+      (openingDir === 'down') ? (y + h + 30) : (y - 30),
+      w*0.9
+    );
+    bulge.addColorStop(0, 'rgba(0,0,0,0.35)');
+    bulge.addColorStop(1, 'rgba(0,0,0,0.00)');
+    ctx.fillStyle = bulge;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
+
   /* ----------------------- Flow ----------------------- */
   function reset(){
     state.playing=false; state.dead=false;
@@ -308,9 +425,7 @@
   }
   function restart(){ reset(); start(); }
 
-  function updateUI(){
-    // No character/mute buttons to toggle anymore.
-  }
+  function updateUI(){}
 
   /* ----------------------- Trail ----------------------- */
   function colorForScore(score){
@@ -351,7 +466,7 @@
   /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
-    let skinColor = '#cfe3ff'; // fallback particle color
+    let skinColor = '#cfe3ff';
 
     for (let i=0;i<28;i++){
       const ang = Math.random()*Math.PI*2;
@@ -384,159 +499,6 @@
     }
     state.shake = 10;
     state.flash = 0.5;
-  }
-
-  /* ===================== PIPE RENDERING UPGRADE ===================== */
-
-  const PIPE_COLORS = {
-    bodyDark:  '#0f2b46',
-    bodyMid:   '#184a74',
-    bodyLight: '#6fb2ff',
-    rimDark:   '#0b1e33',
-    rimLight:  '#9ed0ff',
-    bolts:     '#bfe1ff',
-    glow:      'rgba(120,200,255,0.12)',
-    innerShade:'rgba(3,8,14,0.55)'
-  };
-
-  function roundedRectPath(ctx, x, y, w, h, r){
-    const rr = Math.max(0, Math.min(r, Math.min(w, h)/2));
-    ctx.beginPath();
-    ctx.moveTo(x+rr, y);
-    ctx.lineTo(x+w-rr, y);
-    ctx.quadraticCurveTo(x+w, y, x+w, y+rr);
-    ctx.lineTo(x+w, y+h-rr);
-    ctx.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
-    ctx.lineTo(x+rr, y+h);
-    ctx.quadraticCurveTo(x, y+h, x, y+h-rr);
-    ctx.lineTo(x, y+rr);
-    ctx.quadraticCurveTo(x, y, x+rr, y);
-    ctx.closePath();
-  }
-
-  function drawPipeBody(ctx, x, y, w, h){
-    if (h <= 0) return;
-
-    // Ambient glow behind pipe
-    ctx.save();
-    ctx.fillStyle = PIPE_COLORS.glow;
-    ctx.filter = 'blur(3px)';
-    ctx.fillRect(x-4, y, w+8, h);
-    ctx.restore();
-
-    // Cylinder gradient
-    const g = ctx.createLinearGradient(x, y, x+w, y);
-    g.addColorStop(0.00, PIPE_COLORS.bodyDark);
-    g.addColorStop(0.18, PIPE_COLORS.bodyMid);
-    g.addColorStop(0.50, PIPE_COLORS.bodyLight);
-    g.addColorStop(0.82, PIPE_COLORS.bodyMid);
-    g.addColorStop(1.00, PIPE_COLORS.bodyDark);
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-
-    // Subtle vertical bands
-    ctx.save();
-    ctx.globalAlpha = 0.07;
-    for (let i = 1; i < 4; i++){
-      const xx = x + (w/5) * i;
-      ctx.fillRect(xx, y, 2, h);
-    }
-    ctx.restore();
-
-    // Edge highlights
-    ctx.save();
-    ctx.globalAlpha = 0.35; ctx.fillStyle = 'white';
-    ctx.fillRect(x + 1.5, y, 1, h);
-    ctx.globalAlpha = 0.18;
-    ctx.fillRect(x + w - 2.5, y, 1, h);
-    ctx.restore();
-  }
-
-  function drawInnerShadowAtEdge(ctx, x, edgeY, w, outward){
-    const h = 16; // thickness
-    const y0 = outward ? edgeY : edgeY - h;
-    const y1 = outward ? edgeY + h : edgeY;
-
-    const g = ctx.createLinearGradient(0, y0, 0, y1);
-    if (outward){
-      g.addColorStop(0.00, PIPE_COLORS.innerShade);
-      g.addColorStop(1.00, 'rgba(0,0,0,0)');
-    } else {
-      g.addColorStop(0.00, 'rgba(0,0,0,0)');
-      g.addColorStop(1.00, PIPE_COLORS.innerShade);
-    }
-    ctx.fillStyle = g;
-    ctx.fillRect(x, Math.min(y0,y1), w, Math.abs(y1-y0));
-  }
-
-  function drawBolts(ctx, x, y, w, h){
-    if (h < 60) return;
-    ctx.save();
-    ctx.fillStyle = PIPE_COLORS.bolts;
-    ctx.globalAlpha = 0.55;
-    const colL = x + Math.floor(w * 0.25);
-    const colR = x + Math.floor(w * 0.75);
-    const step = 60;
-    const jitter = ((state.t*0.03) % step);
-    for (let yy = y + 20 - jitter; yy < y + h - 20; yy += step){
-      ctx.beginPath(); ctx.arc(colL, yy, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(colR, yy, 2, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawRimCap(ctx, x, y, w, h, isTopCap){
-    if (h <= 0) return;
-
-    const r = 8;
-    roundedRectPath(ctx, x - 4, y, w + 8, h, r);
-
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    if (isTopCap){
-      g.addColorStop(0.00, PIPE_COLORS.rimLight);
-      g.addColorStop(1.00, PIPE_COLORS.rimDark);
-    } else {
-      g.addColorStop(0.00, PIPE_COLORS.rimDark);
-      g.addColorStop(1.00, PIPE_COLORS.rimLight);
-    }
-    ctx.fillStyle = g;
-    ctx.fill();
-
-    // Rim highlight
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(x - 2, isTopCap ? (y + 1.5) : (y + h - 1.5));
-    ctx.lineTo(x + w + 2, isTopCap ? (y + 1.5) : (y + h - 1.5));
-    ctx.stroke();
-    ctx.restore();
-
-    // Tiny screws
-    ctx.save();
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = PIPE_COLORS.bolts;
-    const screwY = isTopCap ? (y + h - 6) : (y + 6);
-    for (let i=0;i<3;i++){
-      const sx = x + (w/4)*(i+1);
-      ctx.beginPath(); ctx.arc(sx, screwY, 1.6, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawPipeSegment(ctx, x, y, w, h, facingGapFromBelow){
-    drawPipeBody(ctx, x, y, w, h);
-    drawBolts(ctx, x, y, w, h);
-    if (facingGapFromBelow){
-      // top segment: edge faces down to the gap
-      drawInnerShadowAtEdge(ctx, x, y + h, w, true);
-      drawRimCap(ctx, x, y + h - 10, w, 10, true);
-    } else {
-      // bottom segment: edge faces up to the gap
-      drawInnerShadowAtEdge(ctx, x, y, w, false);
-      drawRimCap(ctx, x, y, w, 10, false);
-    }
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -670,7 +632,6 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // --- Starfield (your original simple 2-layer) ---
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -687,16 +648,16 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // === PIPES (upgraded) ===
+    // Hoodie-sleeve pipes (no seam)
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
-      const yTop = 0, hTop = Math.max(0, gy - half);
-      const yBot = gy + half, hBot = Math.max(0, canvas.clientHeight - yBot);
+      const yTop = 0, hTop = gy - half;
+      const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      if (hTop > 0) drawPipeSegment(ctx, x, yTop, w, hTop, true);   // faces gap from below
-      if (hBot > 0) drawPipeSegment(ctx, x, yBot, w, hBot, false);  // faces gap from above
+      if (hTop>0) drawSleeve(ctx, x, yTop, w, hTop, 'down'); // opening faces gap
+      if (hBot>0) drawSleeve(ctx, x, yBot, w, hBot, 'up');   // opening faces gap
     }
 
     // Orbs
@@ -748,7 +709,6 @@
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        // fallback shape
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
