@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -228,6 +229,7 @@
     trailGold:'#ffd54a',
 
     startTime:0,
+    elapsed:0,             // << fixed-step elapsed since start
     deathPause:false,
     deathTimer:0
   };
@@ -330,7 +332,7 @@
     state.score=0;
     state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
-    state.spawn=30; state.t=0; state.shake=0; state.flash=0;
+    state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
@@ -341,6 +343,7 @@
     if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
+    state.elapsed = 0;
     if (msg) msg.style.display = 'none';
     updateUI();
   }
@@ -361,7 +364,7 @@
   // Curved plasma trail — tuned for performance & shifted behind ghost
   function addTrail(){
     const base = colorForScore(state.score);
-    const count = Math.random() < 0.6 ? 1 : 2;             // fewer particles
+    const count = Math.random() < 0.6 ? 1 : 2;
     for (let i=0;i<count;i++){
       const life = Math.random()*9 + 20;
       const heat = Math.random()*0.7 + 0.6;
@@ -491,15 +494,20 @@
     }
   }
 
-  /* ----------------------- Loop (TIME-BASED) ----------------------- */
-  let last = performance.now();
-  function loop(t){
-    const dt = Math.min(32, t - last); last = t;
-    const step = dt / 16.67;
-    state.t += dt;
+  /* ==================== Fixed 60 FPS Update ==================== */
+  const FIXED_DT = 1000/60;     // ~16.6667ms
+  const MAX_STEPS = 5;          // cap to avoid spiral of death
+  let lastTime = performance.now();
+  let accumulator = 0;
 
+  function tick(dtMs){
+    // dtMs is in milliseconds (typically 16.67 for 60hz)
+    state.t += dtMs;
+    const step = dtMs / 16.67; // reuse existing tuning that expects ~frames
+
+    // Handle death pause updates (particles & timer still animate)
     if (state.deathPause){
-      state.deathTimer -= dt;
+      state.deathTimer -= dtMs;
 
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
@@ -511,8 +519,6 @@
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
 
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-      draw();
-      requestAnimationFrame(loop);
 
       if (state.deathTimer <= 0){
         state.deathPause = false;
@@ -522,10 +528,10 @@
     }
 
     if (state.playing && !state.dead){
-      const sinceStart = Math.max(0, t - state.startTime);
-      const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
-      state.speed = Math.min(SETTINGS.speedMax, state.speed + accel * dt);
-      state.gap   = Math.max(SETTINGS.gapMin, state.gap - SETTINGS.gapShrinkPerMs * dt);
+      state.elapsed += dtMs;
+      const accel = (state.elapsed < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
+      state.speed = Math.min(SETTINGS.speedMax, state.speed + accel * dtMs);
+      state.gap   = Math.max(SETTINGS.gapMin, state.gap - SETTINGS.gapShrinkPerMs * dtMs);
     }
 
     if (state.playing && !state.dead){
@@ -598,8 +604,6 @@
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-    draw();
-    requestAnimationFrame(loop);
   }
 
   function die(){
@@ -627,7 +631,7 @@
     /* ===== Parallax starfield + nebula depth + golden twinkles ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
 
-    // Soft vignette & drifting nebula washes (very low alpha, cheap radial gradients)
+    // Soft vignette & drifting nebula washes
     {
       const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(state.t*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
       g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
@@ -642,7 +646,7 @@
       ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
     }
 
-    // FAR layer (tiny, slow)
+    // FAR layer
     ctx.globalAlpha = 0.08;
     for (let i=0;i<90;i++){
       const x = (i*120 - (state.t*0.020)%120);
@@ -650,7 +654,7 @@
       ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
     }
 
-    // MID layer (slightly bigger, subtle vertical sway)
+    // MID layer
     ctx.globalAlpha = 0.14;
     for (let i=0;i<60;i++){
       const x = (i*200 - (state.t*0.040)%200);
@@ -658,31 +662,25 @@
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
 
-    // GOLDEN FLICKERS (tiny twinkles with additive blend)
+    // GOLDEN FLICKERS
     ctx.globalAlpha = 1;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i=0;i<28;i++){
-      // Staggered positions & parallax speed
       const baseX = (i*180 - (state.t*0.050)%180);
       const baseY = 30 + ((i*97) % (H-60));
-      // Twinkle: phase varies with i, amplitude gentle
       const tw = 0.45 + 0.55*(0.5 + 0.5*Math.sin(state.t*0.003 + i*12.9898));
-      const a  = 0.08 + 0.28*(tw*tw); // non-linear pop
+      const a  = 0.08 + 0.28*(tw*tw);
       ctx.globalAlpha = a;
-
-      // tiny glow core
       ctx.fillStyle = "#ffd65a";
       ctx.beginPath();
       ctx.arc(baseX, baseY + Math.sin(i*3.1 + state.t*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2);
       ctx.fill();
-
-      // micro halo using our glow sprite (very small & cheap)
       drawGlow(ctx, baseX, baseY, 4 + tw*2.5, 0.12*a + 0.04);
     }
     ctx.restore();
 
-    // Gentle top/bottom vignette for depth
+    // Vignette
     ctx.globalAlpha = 0.28;
     const vgTop = ctx.createLinearGradient(0,0,0,H);
     vgTop.addColorStop(0,'rgba(0,0,0,0.45)');
@@ -752,7 +750,7 @@
       }
     }
    
-    // Particles (curved plasma ribbons & shards)
+    // Particles
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -841,8 +839,6 @@
       ctx.restore();
     }
 
-    ctx.restore();
-
     if (state.flash>0){
       ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
       ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
@@ -851,8 +847,27 @@
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
+  function loop(now){
+    // Accumulate real time
+    const frameTime = Math.min(100, now - lastTime); // clamp to avoid massive jumps
+    lastTime = now;
+    accumulator += frameTime;
+
+    // Run a fixed number of 60Hz ticks
+    let steps = 0;
+    while (accumulator >= FIXED_DT && steps < MAX_STEPS){
+      tick(FIXED_DT);
+      accumulator -= FIXED_DT;
+      steps++;
+    }
+
+    // Draw once per frame
+    draw();
+    requestAnimationFrame(loop);
+  }
+
   reset();
-  requestAnimationFrame(loop);
+  requestAnimationFrame(t => { lastTime = t; accumulator = 0; requestAnimationFrame(loop); });
 })();
 </script>
 </body>
