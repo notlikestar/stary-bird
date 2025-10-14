@@ -353,7 +353,7 @@
     return state.trailBase;
   }
 
-  // Curved plasma trail
+  // Curved plasma trail (unchanged spawn; rendering flipped horizontally below)
   function addTrail(){
     const base = colorForScore(state.score);
     const count = 2 + (Math.random() < 0.45 ? 1 : 0);
@@ -374,9 +374,9 @@
         color: base,
         heat,
         seed,
-        phase: Math.random()*Math.PI*2,   // drives the curve animation
-        cfreq: 6 + Math.random()*4,       // curve frequency along the ribbon
-        camp:  3 + Math.random()*5        // curve amplitude (px)
+        phase: Math.random()*Math.PI*2,
+        cfreq: 6 + Math.random()*4,
+        camp:  3 + Math.random()*5
       });
     }
   }
@@ -584,7 +584,6 @@
         prt.x  += prt.vx * step;
         prt.y  += prt.vy * step;
         if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        // animate plasma waviness
         if (prt.phase !== undefined){ prt.phase += 0.08 * step; }
         if (prt.heat !== undefined){ prt.heat *= Math.pow(0.985, step); }
         prt.life -= step;
@@ -705,15 +704,15 @@
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
-        // Curved plasma
+        // Curved plasma — FLIPPED HORIZONTALLY
         const heat = prt.heat !== undefined ? prt.heat : 0.5;
         const flick = 1 + 0.25 * Math.sin( (state.t*0.02) + (prt.seed||0) );
         const width = (prt.r||2) * (1.2 + 0.5*heat) * flick;
         const speedMag = Math.hypot(prt.vx||0, prt.vy||0) + state.speed*0.15;
         const length = width * (4.5 + 3.0*heat) * (0.6 + speedMag*0.18);
-        const ang = Math.atan2(prt.vy||0, (prt.vx||0) - 0.6);
+        // add PI to flip horizontally
+        const ang = Math.atan2(prt.vy||0, (prt.vx||0) - 0.6) + Math.PI;
 
-        // gradient along the ribbon (local space)
         ctx.save();
         ctx.translate(prt.x, prt.y);
         ctx.rotate(ang);
@@ -721,7 +720,6 @@
         const lg = ctx.createLinearGradient(0,0,-length,0);
         const coreAlpha = Math.min(1, 0.9 * a * (0.6 + heat*0.6));
         lg.addColorStop(0.00, `rgba(255,255,255,${coreAlpha})`);
-        // parse base color
         let r=207,gc=227,b=255;
         if (/^#([0-9a-f]{6})$/i.test(prt.color||'')){
           const n = parseInt((prt.color||'#cfe3ff').slice(1),16);
@@ -736,7 +734,6 @@
         ctx.strokeStyle = lg;
         ctx.globalAlpha = 1;
 
-        // wavy path: series of small quadratic curves
         const segs = 5;
         const amp = (prt.camp||4) * (0.8 + 0.4*Math.random()) * (0.6 + 0.6*a);
         const freq = prt.cfreq||8;
@@ -752,12 +749,10 @@
           const py = Math.sin(phase + (t-0.5/segs)*freq) * amp;
           ctx.quadraticCurveTo(px, py, x, y);
         }
-        // subtle bloom
         ctx.shadowBlur = width*0.8;
         ctx.shadowColor = `rgba(${r},${gc},${b},${Math.min(0.6, coreAlpha)})`;
         ctx.stroke();
 
-        // hot glow at the base
         drawGlow(ctx, 0, 0, Math.max(width*0.9, 3), 0.22*coreAlpha);
 
         ctx.restore();
