@@ -386,138 +386,6 @@
     state.flash = 0.5;
   }
 
-  /* ===================== Fancy Pipe Drawing ===================== */
-
-  // Colors tuned to match your palette
-  const PIPE_COLORS = {
-    bodyLeft:  '#0e2a45',
-    bodyMid:   '#1a4a74',
-    bodyRight: '#0c2238',
-    edgeDark:  '#071a2b',
-    capLight:  '#8fc6ff',
-    capMid:    '#4aa0f0',
-    capDark:   '#1c5e98',
-    highlight: 'rgba(255,255,255,0.25)',
-    innerLine: 'rgba(200,230,255,0.06)'
-  };
-
-  function roundRectPath(c, x, y, w, h, r){
-    const rr = Math.min(r, w*0.5, h*0.5);
-    c.beginPath();
-    c.moveTo(x+rr, y);
-    c.lineTo(x+w-rr, y);
-    c.quadraticCurveTo(x+w, y, x+w, y+rr);
-    c.lineTo(x+w, y+h-rr);
-    c.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
-    c.lineTo(x+rr, y+h);
-    c.quadraticCurveTo(x, y+h, x, y+h-rr);
-    c.lineTo(x, y+rr);
-    c.quadraticCurveTo(x, y, x+rr, y);
-    c.closePath();
-  }
-
-  function pipeGradient(c, x, y, w, h){
-    const g = c.createLinearGradient(x, 0, x+w, 0); // horizontal
-    g.addColorStop(0.00, PIPE_COLORS.bodyLeft);
-    g.addColorStop(0.50, PIPE_COLORS.bodyMid);
-    g.addColorStop(1.00, PIPE_COLORS.bodyRight);
-    return g;
-  }
-
-  function drawPipeBody(c, x, y, w, h){
-    if (h <= 0) return;
-    // main body with subtle rounded corners
-    const r = Math.min(10, Math.min(w, h) * 0.2);
-    roundRectPath(c, x, y, w, h, r);
-    c.fillStyle = pipeGradient(c, x, y, w, h);
-    c.fill();
-
-    // inner soft vertical highlights (simulate cylindrical sheen)
-    c.save();
-    c.clip();
-    c.globalAlpha = 0.55;
-    const sheenW = Math.max(6, w * 0.16);
-    const midX   = x + w * 0.5 - sheenW * 0.5;
-    const g1 = c.createLinearGradient(midX, 0, midX + sheenW, 0);
-    g1.addColorStop(0, 'rgba(255,255,255,0.08)');
-    g1.addColorStop(0.5, 'rgba(255,255,255,0.16)');
-    g1.addColorStop(1, 'rgba(255,255,255,0.08)');
-    c.fillStyle = g1;
-    c.fillRect(midX, y, sheenW, h);
-
-    // faint horizontal banding for texture
-    c.globalAlpha = 1;
-    c.fillStyle = PIPE_COLORS.innerLine;
-    const step = 14;
-    for (let yy = Math.floor(y/step)*step; yy < y+h; yy += step){
-      c.fillRect(x+2, yy, w-4, 1);
-    }
-    c.restore();
-
-    // dark edges to add depth
-    c.strokeStyle = PIPE_COLORS.edgeDark;
-    c.lineWidth = 2;
-    roundRectPath(c, x+0.5, y+0.5, w-1, h-1, r);
-    c.stroke();
-  }
-
-  // Rounded cap at the gap edge (slightly wider than pipe, with lip and highlight)
-  function drawPipeCap(c, x, y, w, capH, isTop){
-    const lipOver = Math.max(6, Math.floor(w * 0.10)); // overhang
-    const capX = x - lipOver/2;
-    const capW = w + lipOver;
-    const capY = isTop ? (y - capH) : y;
-
-    // cap gradient (slightly brighter)
-    const g = c.createLinearGradient(capX, 0, capX+capW, 0);
-    g.addColorStop(0, PIPE_COLORS.capDark);
-    g.addColorStop(0.5, PIPE_COLORS.capMid);
-    g.addColorStop(1, PIPE_COLORS.capDark);
-
-    // cap shape (rounded rectangle)
-    const r = Math.min(12, capH * 0.6);
-    roundRectPath(c, capX, capY, capW, capH, r);
-    c.fillStyle = g;
-    c.fill();
-
-    // glossy edge line
-    c.save();
-    c.clip();
-    c.globalAlpha = 0.75;
-    c.fillStyle = PIPE_COLORS.highlight;
-    const hLineY = isTop ? (capY + capH - 3) : (capY + 2);
-    c.fillRect(capX + 6, hLineY, capW - 12, 2);
-    c.restore();
-
-    // thin dark outline
-    c.strokeStyle = PIPE_COLORS.edgeDark;
-    c.lineWidth = 1.5;
-    roundRectPath(c, capX+0.5, capY+0.5, capW-1, capH-1, r);
-    c.stroke();
-
-    // small drop shadow to lift the lip
-    c.save();
-    c.globalAlpha = 0.35;
-    c.fillStyle = 'black';
-    const shadowH = 6;
-    if (isTop){
-      // shadow below top cap
-      const sg = c.createLinearGradient(capX, capY+capH, capX, capY+capH+shadowH);
-      sg.addColorStop(0, 'rgba(0,0,0,0.35)');
-      sg.addColorStop(1, 'rgba(0,0,0,0)');
-      c.fillStyle = sg;
-      c.fillRect(capX+6, capY+capH, capW-12, shadowH);
-    }else{
-      // shadow above bottom cap
-      const sg = c.createLinearGradient(capX, capY, capX, capY-shadowH);
-      sg.addColorStop(0, 'rgba(0,0,0,0.35)');
-      sg.addColorStop(1, 'rgba(0,0,0,0)');
-      c.fillStyle = sg;
-      c.fillRect(capX+6, capY-shadowH, capW-12, shadowH);
-    }
-    c.restore();
-  }
-
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
   let last = performance.now();
   function loop(t){
@@ -649,7 +517,6 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // background stars
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -666,23 +533,19 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // ======== Nicer Pipes with rounded lips + horizontal shading ========
+    // Pipes
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
-
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
-
-      // Body sections
-      drawPipeBody(ctx, x, yTop, w, hTop);
-      drawPipeBody(ctx, x, yBot, w, hBot);
-
-      // Rounded caps at gap
-      const capH = Math.min(22, Math.max(14, Math.floor(w * 0.28)));
-      if (hTop > 0) drawPipeCap(ctx, x, yTop + hTop, w, capH, /*isTop*/true);
-      if (hBot > 0) drawPipeCap(ctx, x, yBot,       w, capH, /*isTop*/false);
+      ctx.fillStyle = "#12324f";
+      if (hTop>0) ctx.fillRect(x, yTop, w, hTop);
+      if (hBot>0) ctx.fillRect(x, yBot, w, hBot);
+      ctx.fillStyle = "#1a476f";
+      if (hTop>0) ctx.fillRect(x, yTop+hTop-4, w, 4);
+      if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
     }
 
     // Orbs
