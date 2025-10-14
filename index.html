@@ -368,7 +368,7 @@
       const seed = Math.random()*1000;
       state.particles.push({
         type:'spark',
-        x: p.x - 14 + Math.random()*4,                     // moved right (closer to ghost)
+        x: p.x - 14 + Math.random()*4,
         y: p.y + Math.random()*8 - 4,
         vx: -state.speed*0.72 + (Math.random()*-0.7) + (Math.random()-.5)*0.3,
         vy: (Math.random()-.5)*0.9 + (Math.random()-.5)*0.2,
@@ -384,7 +384,6 @@
         camp:  2.5 + Math.random()*4
       });
     }
-    // hard cap to prevent slowdowns
     if (state.particles.length > 320) state.particles.splice(0, state.particles.length - 320);
   }
 
@@ -625,20 +624,76 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    ctx.globalAlpha = 0.06;
-    for (let i=0;i<70;i++){
-      const x = (i*130 - (state.t*0.035)%130);
-      const y = 30 + (i*47) % (canvas.clientHeight-60);
-      ctx.fillStyle="#bcd1ff"; ctx.fillRect(x, y, 2, 2);
+    /* ===== Parallax starfield + nebula depth + golden twinkles ===== */
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+
+    // Soft vignette & drifting nebula washes (very low alpha, cheap radial gradients)
+    {
+      const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(state.t*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
+      g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
+      g1.addColorStop(0.5, 'rgba(40,60,120,0.06)');
+      g1.addColorStop(1.0, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g1; ctx.fillRect(0,0,W,H);
+
+      const g2 = ctx.createRadialGradient(W*0.85 + Math.cos(state.t*0.00018)*50, H*0.75, 0, W*0.85, H*0.75, Math.max(W,H)*0.8);
+      g2.addColorStop(0.0, 'rgba(120,60,140,0.08)');
+      g2.addColorStop(0.6, 'rgba(50,30,70,0.05)');
+      g2.addColorStop(1.0, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
     }
-    ctx.globalAlpha = 0.12;
-    for (let i=0;i<40;i++){
-      const x = (i*220 - (state.t*0.06)%220);
-      const y = 20 + ((i*83) % (canvas.clientHeight-40)) + Math.sin((state.t*0.0006)+i)*2;
+
+    // FAR layer (tiny, slow)
+    ctx.globalAlpha = 0.08;
+    for (let i=0;i<90;i++){
+      const x = (i*120 - (state.t*0.020)%120);
+      const y = 20 + (i*53) % (H-40);
+      ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
+    }
+
+    // MID layer (slightly bigger, subtle vertical sway)
+    ctx.globalAlpha = 0.14;
+    for (let i=0;i<60;i++){
+      const x = (i*200 - (state.t*0.040)%200);
+      const y = 12 + ((i*81) % (H-24)) + Math.sin((state.t*0.00055)+i)*2;
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
+
+    // GOLDEN FLICKERS (tiny twinkles with additive blend)
+    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i=0;i<28;i++){
+      // Staggered positions & parallax speed
+      const baseX = (i*180 - (state.t*0.050)%180);
+      const baseY = 30 + ((i*97) % (H-60));
+      // Twinkle: phase varies with i, amplitude gentle
+      const tw = 0.45 + 0.55*(0.5 + 0.5*Math.sin(state.t*0.003 + i*12.9898));
+      const a  = 0.08 + 0.28*(tw*tw); // non-linear pop
+      ctx.globalAlpha = a;
+
+      // tiny glow core
+      ctx.fillStyle = "#ffd65a";
+      ctx.beginPath();
+      ctx.arc(baseX, baseY + Math.sin(i*3.1 + state.t*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2);
+      ctx.fill();
+
+      // micro halo using our glow sprite (very small & cheap)
+      drawGlow(ctx, baseX, baseY, 4 + tw*2.5, 0.12*a + 0.04);
+    }
+    ctx.restore();
+
+    // Gentle top/bottom vignette for depth
+    ctx.globalAlpha = 0.28;
+    const vgTop = ctx.createLinearGradient(0,0,0,H);
+    vgTop.addColorStop(0,'rgba(0,0,0,0.45)');
+    vgTop.addColorStop(0.15,'rgba(0,0,0,0.25)');
+    vgTop.addColorStop(0.5,'rgba(0,0,0,0)');
+    vgTop.addColorStop(0.85,'rgba(0,0,0,0.25)');
+    vgTop.addColorStop(1,'rgba(0,0,0,0.45)');
+    ctx.fillStyle = vgTop; ctx.fillRect(0,0,W,H);
     ctx.globalAlpha = 1;
 
+    /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
     // Draw sleeves
@@ -739,7 +794,6 @@
         ctx.strokeStyle = lg;
         ctx.globalAlpha = 1;
 
-        // fewer segments for speed
         const segs = 4;
         const amp = (prt.camp||4) * (0.8 + 0.3*Math.random()) * (0.6 + 0.6*a);
         const freq = prt.cfreq||8;
@@ -755,7 +809,6 @@
           const py = Math.sin(phase + (t-0.5/segs)*freq) * amp;
           ctx.quadraticCurveTo(px, py, x, y);
         }
-        // no shadow blur (big perf win)
         ctx.stroke();
 
         if (width > 2.5) drawGlow(ctx, 0, 0, Math.max(width*0.8, 2.8), 0.16*coreAlpha);
