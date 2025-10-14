@@ -228,7 +228,7 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
-    // simplified trail (no plasma): fading dots
+    // FIRE trail elements
     trailDots:[],
 
     // particles kept for explosions only
@@ -364,12 +364,12 @@
     // no-op for now
   }
 
-  /* ----------------------- Trail (simple dots) ----------------------- */
+  /* ----------------------- Trail (FIRE) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
-    return state.trailBase;
+    if (score >= 50) return state.trailGold;   // gold
+    if (score >= 25) return state.trailPurple; // purple
+    if (score >= 10) return state.trailBlue;   // blue
+    return state.trailBase;                    // base
   }
   function progressionLevel(score){
     if (score >= 50) return 3; // gold
@@ -378,21 +378,29 @@
     return 0;                  // base
   }
 
-  // Simple, cheap: add small dots behind the ghost; size/glow scale with progression
+  // Create tapered flame elements behind the ghost
   function addTrail(){
     const lvl = progressionLevel(state.score);
-    const sizes = [4, 6, 8, 10];        // grows with color progression
-    const glows = [8, 12, 15, 18];      // corresponding glow radius
-    const life  = 26;                    // frames-ish (fixed step tuned)
+    const lengths = [26, 34, 44, 58];   // flame length grows with progression
+    const widths  = [6,  8, 10, 12];    // head width grows too
+    const glows   = [14, 18, 22, 28];   // hotter glow
+
+    // direction points mostly left, slightly influenced by vertical velocity
+    const ang = Math.atan2(p.vy * 0.25, -state.speed * 1.2) + rand(-0.12, 0.12);
+
+    const life = 22 + Math.random()*8;
     state.trailDots.push({
-      x: p.x - 14, y: p.y + rand(-1.5,1.5),
-      r: sizes[lvl] + rand(-0.4,0.4),
+      x: p.x - 12, y: p.y + rand(-1.5,1.5),
+      len: lengths[lvl] * (0.9 + Math.random()*0.2),
+      w: widths[lvl]  * (0.9 + Math.random()*0.2),
       glow: glows[lvl],
+      ang,
       color: colorForScore(state.score),
-      life, maxLife: life
+      life, maxLife: life,
+      seed: Math.random()*1000
     });
-    // trim
-    if (state.trailDots.length > 80) state.trailDots.splice(0, state.trailDots.length - 80);
+
+    if (state.trailDots.length > 120) state.trailDots.splice(0, state.trailDots.length - 120);
   }
 
   /* ----------------------- Collisions ----------------------- */
@@ -512,8 +520,8 @@
     if (state.deathPause){
       state.deathTimer -= dtMs;
 
-      // decay trail during pause too
-      for (const d of state.trailDots) d.life -= step;
+      // decay fire & particles during pause too
+      for (const d of state.trailDots) { d.life -= step; }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
       for (const prt of state.particles){
@@ -598,8 +606,12 @@
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
-      // trail fade
-      for (const d of state.trailDots) d.life -= step;
+      // FIRE trail advects backward & fades
+      for (const d of state.trailDots){
+        d.x -= state.speed * step * 0.9;                           // push back with world
+        d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);         // subtle flicker
+        d.life -= step;
+      }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
       // explosion particles decay
@@ -705,20 +717,59 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // SIMPLE TRAIL: draw behind player (size & glow scale with progression)
+    // FIRE TRAIL behind player (tapered quads with hot core)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
-      // soft outer glow
-      drawGlow(ctx, d.x, d.y, d.glow * (0.6 + 0.4*a), 0.15 * a);
-      // core dot
-      ctx.globalAlpha = 0.25 + 0.55*a;
-      ctx.fillStyle = d.color;
+
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.ang);
+
+      // Outer plume (orange -> transparent)
+      const len = d.len * (0.7 + 0.3*a);
+      const w   = d.w   * (0.6 + 0.4*a);
+
+      const outer = ctx.createLinearGradient(0,0,-len,0);
+      outer.addColorStop(0.00, `rgba(255,170,60,${0.35*a})`);
+      outer.addColorStop(0.35, `rgba(255,130,30,${0.28*a})`);
+      outer.addColorStop(1.00, 'rgba(255,100,0,0)');
+      ctx.fillStyle = outer;
+
       ctx.beginPath();
-      ctx.arc(d.x, d.y, d.r * (0.6 + 0.4*a), 0, Math.PI*2);
+      ctx.moveTo(0,  w*0.6);
+      ctx.lineTo(-len,  w*0.08);
+      ctx.lineTo(-len, -w*0.08);
+      ctx.lineTo(0, -w*0.6);
+      ctx.closePath();
       ctx.fill();
-      ctx.globalAlpha = 1;
+
+      // Inner core (white/yellow hot)
+      const coreLen = len * 0.78;
+      const coreW   = w   * 0.55;
+      const core = ctx.createLinearGradient(0,0,-coreLen,0);
+      core.addColorStop(0.00, `rgba(255,255,255,${0.85*a})`);
+      core.addColorStop(0.15, `rgba(255,230,120,${0.75*a})`);
+      core.addColorStop(0.55, `rgba(255,170,60,${0.30*a})`);
+      core.addColorStop(1.00, 'rgba(255,140,40,0)');
+      ctx.fillStyle = core;
+
+      ctx.beginPath();
+      ctx.moveTo(0,  coreW*0.55);
+      ctx.lineTo(-coreLen,  coreW*0.10);
+      ctx.lineTo(-coreLen, -coreW*0.10);
+      ctx.lineTo(0, -coreW*0.55);
+      ctx.closePath();
+      ctx.fill();
+
+      // Head glow
+      drawGlow(ctx, 0, 0, d.glow * (0.7 + 0.5*a), 0.18*a + 0.06);
+
+      ctx.restore();
     }
+    ctx.restore();
 
     // Draw sleeves
     for (const pipe of state.pipes){
@@ -793,7 +844,7 @@
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
-        // small light streaks
+        // small light dots
         ctx.globalAlpha = a;
         ctx.fillStyle = prt.color;
         ctx.beginPath();
