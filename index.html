@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,7 +25,8 @@
   }
   .stage { position:fixed; inset:0; width:100vw; height:100svh; background:transparent; }
   #game  { position:absolute; left:0; top:0; width:100%; height:100%; display:block;
-           background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none; }
+           background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none;
+           will-change: transform; backface-visibility: hidden; }
 
   .hud{
     position:absolute;
@@ -119,16 +119,21 @@
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
 
-  /* ---------- Robust sizing ---------- */
+  /* ---------- Robust sizing (+ overscan to kill edge seams) ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
     const w = Math.floor(vv ? vv.width  : window.innerWidth);
     const h = Math.floor(vv ? vv.height : window.innerHeight);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-    const cw = Math.max(1, Math.floor(w * DPR));
-    const ch = Math.max(1, Math.floor(h * DPR));
+
+    // Overscan by 2px and offset by -1px to hide 1px seams on mobile Safari when shaking/transforming.
+    canvas.style.left  = '-1px';
+    canvas.style.top   = '-1px';
+    canvas.style.width  = (w + 2) + 'px';
+    canvas.style.height = (h + 2) + 'px';
+
+    const cw = Math.max(1, Math.floor((w + 2) * DPR));
+    const ch = Math.max(1, Math.floor((h + 2) * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
   }
@@ -221,7 +226,13 @@
     speed: SETTINGS.speedBase, gap:150,
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
-    orbs:[], pipes:[], particles:[],
+    orbs:[], pipes:[],
+
+    // simplified trail (no plasma): fading dots
+    trailDots:[],
+
+    // particles kept for explosions only
+    particles:[],
 
     trailBase:'#cfe3ff',
     trailBlue:'#4ab7ff',
@@ -229,7 +240,7 @@
     trailGold:'#ffd54a',
 
     startTime:0,
-    elapsed:0,             // << fixed-step elapsed since start
+    elapsed:0,
     deathPause:false,
     deathTimer:0
   };
@@ -331,7 +342,7 @@
     state.deathPause=false; state.deathTimer=0;
     state.score=0;
     state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
-    state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
+    state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
@@ -350,44 +361,38 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // UI placeholder if needed later
+    // no-op for now
   }
 
-  /* ----------------------- Trail ----------------------- */
+  /* ----------------------- Trail (simple dots) ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
     if (score >= 10) return state.trailBlue;
     return state.trailBase;
   }
+  function progressionLevel(score){
+    if (score >= 50) return 3; // gold
+    if (score >= 25) return 2; // purple
+    if (score >= 10) return 1; // blue
+    return 0;                  // base
+  }
 
-  // Curved plasma trail — tuned for performance & shifted behind ghost
+  // Simple, cheap: add small dots behind the ghost; size/glow scale with progression
   function addTrail(){
-    const base = colorForScore(state.score);
-    const count = Math.random() < 0.6 ? 1 : 2;
-    for (let i=0;i<count;i++){
-      const life = Math.random()*9 + 20;
-      const heat = Math.random()*0.7 + 0.6;
-      const seed = Math.random()*1000;
-      state.particles.push({
-        type:'spark',
-        x: p.x - 14 + Math.random()*4,
-        y: p.y + Math.random()*8 - 4,
-        vx: -state.speed*0.72 + (Math.random()*-0.7) + (Math.random()-.5)*0.3,
-        vy: (Math.random()-.5)*0.9 + (Math.random()-.5)*0.2,
-        g: 0.02,
-        spin:0,
-        life, maxLife: life,
-        r: Math.random()*1.8 + 1.8,
-        color: base,
-        heat,
-        seed,
-        phase: Math.random()*Math.PI*2,
-        cfreq: 6 + Math.random()*3,
-        camp:  2.5 + Math.random()*4
-      });
-    }
-    if (state.particles.length > 320) state.particles.splice(0, state.particles.length - 320);
+    const lvl = progressionLevel(state.score);
+    const sizes = [4, 6, 8, 10];        // grows with color progression
+    const glows = [8, 12, 15, 18];      // corresponding glow radius
+    const life  = 26;                    // frames-ish (fixed step tuned)
+    state.trailDots.push({
+      x: p.x - 14, y: p.y + rand(-1.5,1.5),
+      r: sizes[lvl] + rand(-0.4,0.4),
+      glow: glows[lvl],
+      color: colorForScore(state.score),
+      life, maxLife: life
+    });
+    // trim
+    if (state.trailDots.length > 80) state.trailDots.splice(0, state.trailDots.length - 80);
   }
 
   /* ----------------------- Collisions ----------------------- */
@@ -501,13 +506,15 @@
   let accumulator = 0;
 
   function tick(dtMs){
-    // dtMs is in milliseconds (typically 16.67 for 60hz)
     state.t += dtMs;
-    const step = dtMs / 16.67; // reuse existing tuning that expects ~frames
+    const step = dtMs / 16.67;
 
-    // Handle death pause updates (particles & timer still animate)
     if (state.deathPause){
       state.deathTimer -= dtMs;
+
+      // decay trail during pause too
+      for (const d of state.trailDots) d.life -= step;
+      while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
@@ -591,13 +598,16 @@
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
+      // trail fade
+      for (const d of state.trailDots) d.life -= step;
+      while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
+
+      // explosion particles decay
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
         prt.y  += prt.vy * step;
         if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        if (prt.phase !== undefined){ prt.phase += 0.08 * step; }
-        if (prt.heat !== undefined){ prt.heat *= Math.pow(0.985, step); }
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
@@ -623,27 +633,28 @@
   }
 
   function draw(){
+    // clear with overscan safety (cover any subpixel transforms)
+    ctx.clearRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
+
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
-    ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
-
-    /* ===== Parallax starfield + nebula depth + golden twinkles ===== */
+    /* ===== Depthy background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
 
-    // Soft vignette & drifting nebula washes
+    // Nebula washes
     {
       const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(state.t*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
       g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
       g1.addColorStop(0.5, 'rgba(40,60,120,0.06)');
       g1.addColorStop(1.0, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g1; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = g1; ctx.fillRect(-2,-2,W+4,H+4);
 
       const g2 = ctx.createRadialGradient(W*0.85 + Math.cos(state.t*0.00018)*50, H*0.75, 0, W*0.85, H*0.75, Math.max(W,H)*0.8);
       g2.addColorStop(0.0, 'rgba(120,60,140,0.08)');
       g2.addColorStop(0.6, 'rgba(50,30,70,0.05)');
       g2.addColorStop(1.0, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = g2; ctx.fillRect(-2,-2,W+4,H+4);
     }
 
     // FAR layer
@@ -688,11 +699,26 @@
     vgTop.addColorStop(0.5,'rgba(0,0,0,0)');
     vgTop.addColorStop(0.85,'rgba(0,0,0,0.25)');
     vgTop.addColorStop(1,'rgba(0,0,0,0.45)');
-    ctx.fillStyle = vgTop; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = vgTop; ctx.fillRect(-2,-2,W+4,H+4);
     ctx.globalAlpha = 1;
 
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
+
+    // SIMPLE TRAIL: draw behind player (size & glow scale with progression)
+    for (const d of state.trailDots){
+      const a = Math.max(0, d.life / d.maxLife);
+      if (a <= 0) continue;
+      // soft outer glow
+      drawGlow(ctx, d.x, d.y, d.glow * (0.6 + 0.4*a), 0.15 * a);
+      // core dot
+      ctx.globalAlpha = 0.25 + 0.55*a;
+      ctx.fillStyle = d.color;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r * (0.6 + 0.4*a), 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     // Draw sleeves
     for (const pipe of state.pipes){
@@ -715,16 +741,20 @@
         if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
       }
     }
-    
-    // Orbs
+
+    // Orbs (pulse scales with progression level too)
+    const lvl = progressionLevel(state.score);
+    const orbBase = [36, 42, 48, 58][lvl];   // bigger with progression
+    const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
+
     for (const o of state.orbs) {
       if (o.taken) continue;
 
       const pulse = 1 + 0.06 * Math.sin(state.t / 360 + o.x * 0.01);
 
-      const glowRadius = o.r * 6 * pulse;
+      const glowRadius = o.r * 6 * pulse * (1 + lvl*0.15);
       const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, glowRadius);
-      grd.addColorStop(0, 'rgba(119,234,255,0.25)');
+      grd.addColorStop(0, `rgba(119,234,255,${orbGlow})`);
       grd.addColorStop(1, 'rgba(119,234,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath();
@@ -732,8 +762,7 @@
       ctx.fill();
 
       if (orbImg && orbImg.complete && !orbImg._error) {
-        const baseSize = 40;
-        const drawSize = baseSize * pulse * 0.8;
+        const drawSize = orbBase * pulse * 0.85;
         ctx.save();
         ctx.translate(o.x, o.y);
         ctx.rotate(Math.sin(state.t / 500 + o.x * 0.03) * 0.15);
@@ -741,7 +770,7 @@
         ctx.restore();
       } else {
         ctx.beginPath();
-        ctx.arc(o.x, o.y, o.r * pulse, 0, Math.PI * 2);
+        ctx.arc(o.x, o.y, o.r * pulse * (1 + lvl*0.2), 0, Math.PI * 2);
         ctx.fillStyle = "#77eaff";
         ctx.fill();
         ctx.strokeStyle = "#c8f3ff";
@@ -749,8 +778,8 @@
         ctx.stroke();
       }
     }
-   
-    // Particles
+
+    // Explosion particles (only when you die / collect)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -764,57 +793,15 @@
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
-        const heat = prt.heat !== undefined ? prt.heat : 0.5;
-        const flick = 1 + 0.25 * Math.sin( (state.t*0.02) + (prt.seed||0) );
-        const width = (prt.r||2) * (1.1 + 0.45*heat) * flick;
-        const speedMag = Math.hypot(prt.vx||0, prt.vy||0) + state.speed*0.12;
-        const length = width * (3.8 + 2.6*heat) * (0.6 + speedMag*0.14);
-        const ang = Math.atan2(prt.vy||0, (prt.vx||0) - 0.6) + Math.PI;
-
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(ang);
-
-        const lg = ctx.createLinearGradient(0,0,-length,0);
-        const coreAlpha = Math.min(1, 0.88 * a * (0.6 + heat*0.6));
-        lg.addColorStop(0.00, `rgba(255,255,255,${coreAlpha})`);
-        let r=207,gc=227,b=255;
-        if (/^#([0-9a-f]{6})$/i.test(prt.color||'')){
-          const n = parseInt((prt.color||'#cfe3ff').slice(1),16);
-          r = (n>>16)&255; gc = (n>>8)&255; b = n&255;
-        } else if (prt.color === '#9fe9ff'){ r=159; gc=233; b=255; }
-        lg.addColorStop(0.25, `rgba(${r},${gc},${b},${Math.max(0, coreAlpha*0.5)})`);
-        lg.addColorStop(1.00, 'rgba(160,120,255,0)');
-
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.lineWidth = Math.max(1, width);
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = lg;
-        ctx.globalAlpha = 1;
-
-        const segs = 4;
-        const amp = (prt.camp||4) * (0.8 + 0.3*Math.random()) * (0.6 + 0.6*a);
-        const freq = prt.cfreq||8;
-        const phase = prt.phase||0;
-
+        // small light streaks
+        ctx.globalAlpha = a;
+        ctx.fillStyle = prt.color;
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        for (let i=1;i<=segs;i++){
-          const t = i / segs;
-          const x = -length * t;
-          const y = Math.sin(phase + t*freq) * amp * (0.6 + 0.3*Math.random());
-          const px = -length * (t - 0.5/segs);
-          const py = Math.sin(phase + (t-0.5/segs)*freq) * amp;
-          ctx.quadraticCurveTo(px, py, x, y);
-        }
-        ctx.stroke();
-
-        if (width > 2.5) drawGlow(ctx, 0, 0, Math.max(width*0.8, 2.8), 0.16*coreAlpha);
-
-        ctx.restore();
+        ctx.arc(prt.x, prt.y, (prt.r||2), 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
-    ctx.globalAlpha = 1;
 
     // Player (ghost)
     if (!state.dead && !state.deathPause){
@@ -839,21 +826,21 @@
       ctx.restore();
     }
 
+    ctx.restore();
+
     if (state.flash>0){
       ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
-      ctx.fillRect(0,0,canvas.clientWidth, canvas.clientHeight);
+      ctx.fillRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
     }
 
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
   function loop(now){
-    // Accumulate real time
-    const frameTime = Math.min(100, now - lastTime); // clamp to avoid massive jumps
+    const frameTime = Math.min(100, now - lastTime);
     lastTime = now;
     accumulator += frameTime;
 
-    // Run a fixed number of 60Hz ticks
     let steps = 0;
     while (accumulator >= FIXED_DT && steps < MAX_STEPS){
       tick(FIXED_DT);
@@ -861,7 +848,6 @@
       steps++;
     }
 
-    // Draw once per frame
     draw();
     requestAnimationFrame(loop);
   }
