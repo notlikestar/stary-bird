@@ -152,35 +152,37 @@
     };
     return img;
   }
-  const ghostImg      = makeImg('assets/ghost.png');
+  const ghostImg        = makeImg('assets/ghost.png');
 
-  // NEW: sleeve assets (exact sizes: body 70x90, cuff 70x125)
-  const sleeveBodyImg = makeImg('assets/sleevebody.png');
-  const sleeveCuffImg = makeImg('assets/sleevecuff.png');
+  // Sleeve assets
+  const sleeveBodyImg   = makeImg('assets/sleevebody.png');     // repeats
+  const sleeveCuffBotImg= makeImg('assets/sleevecuff.png');     // bottom section cuff (touches gap)
+  const sleeveCuffTopImg= makeImg('assets/sleevecufftop.png');  // top section cuff (touches gap)
 
-  let PIPE_W = 70;        // exact width used for pipes
-  let BODY_H = 90;        // sleeve body tile height
-  let CUFF_H = 125;       // sleeve cuff height
+  // Dimensions (will be overwritten by natural sizes onload)
+  let PIPE_W = 70;
+  let BODY_H = 90;
+  let CUFF_TOP_H = 125;
+  let CUFF_BOT_H = 125;
 
-  sleeveBodyImg.onload = () => {
-    if (sleeveBodyImg.naturalWidth) {
-      PIPE_W = sleeveBodyImg.naturalWidth; // should be 70
-      BODY_H = sleeveBodyImg.naturalHeight; // 90
-    }
-  };
-  sleeveCuffImg.onload = () => {
-    if (sleeveCuffImg.naturalWidth) {
-      // confirm width and set cuff height
-      PIPE_W = sleeveCuffImg.naturalWidth; // should also be 70
-      CUFF_H = sleeveCuffImg.naturalHeight; // 125
-      // If some pipes spawned before load, keep their centers but fix width
-      for (const pp of state.pipes) {
-        const cx = pp.x + pp.w/2;
-        pp.w = PIPE_W;
-        pp.x = Math.round(cx - PIPE_W/2);
+  function syncPipeWidthFrom(img){
+    if (img && img.naturalWidth) {
+      // keep existing pipes centered if width changes after spawn
+      const newW = img.naturalWidth;
+      if (newW !== PIPE_W) {
+        for (const pp of state.pipes) {
+          const cx = pp.x + pp.w/2;
+          pp.w = newW;
+          pp.x = Math.round(cx - newW/2);
+        }
       }
+      PIPE_W = newW;
     }
-  };
+  }
+
+  sleeveBodyImg.onload    = () => { syncPipeWidthFrom(sleeveBodyImg); BODY_H     = sleeveBodyImg.naturalHeight || BODY_H; };
+  sleeveCuffBotImg.onload = () => { syncPipeWidthFrom(sleeveCuffBotImg); CUFF_BOT_H = sleeveCuffBotImg.naturalHeight || CUFF_BOT_H; };
+  sleeveCuffTopImg.onload = () => { syncPipeWidthFrom(sleeveCuffTopImg); CUFF_TOP_H = sleeveCuffTopImg.naturalHeight || CUFF_TOP_H; };
 
   /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
@@ -252,6 +254,7 @@
     const h = canvas.clientHeight, margin = 60;
 
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
+    the
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
@@ -267,7 +270,6 @@
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
 
-    // use the sleeve width (exactly 70) for pipes
     const w = PIPE_W;
 
     const isMoving = Math.random() < SETTINGS.movingProb;
@@ -315,34 +317,7 @@
     return pipe.baseGapY;
   };
 
-  /* ----------------------- Flow ----------------------- */
-  function reset(){
-    state.playing=false; state.dead=false;
-    state.deathPause=false; state.deathTimer=0;
-    state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
-    state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
-    state.spawn=30; state.t=0; state.shake=0; state.flash=0;
-    state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
-    p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
-    if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
-    updateUI();
-  }
-  function start(){
-    if (state.dead || state.deathPause) return;
-    state.playing=true;
-    state.startTime = performance.now();
-    if (msg) msg.style.display = 'none';
-    updateUI();
-  }
-  function restart(){ reset(); start(); }
-
-  function updateUI(){
-    // No character/mute buttons to toggle anymore.
-  }
-
-  /* ----------------------- Trail ----------------------- */
+  /* ----------------------- Trail, collisions, explode — unchanged ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -366,8 +341,6 @@
       });
     }
   }
-
-  /* ----------------------- Collisions ----------------------- */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -377,12 +350,9 @@
     return false;
   }
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
-
-  /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
-    let skinColor = '#cfe3ff'; // fallback particle color
-
+    let skinColor = '#cfe3ff';
     for (let i=0;i<28;i++){
       const ang = Math.random()*Math.PI*2;
       const spd = 2.2 + Math.random()*3.2;
@@ -417,60 +387,49 @@
   }
 
   /* ----------------------- Sleeve pipe rendering helpers ----------------------- */
+  // Top section (above gap): draw TOP cuff against gap, then body upward
   function drawTopPipeSection(ctx, x, yTop, w, hTop) {
-    if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffImg) return;
-
+    if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffTopImg) return;
     ctx.imageSmoothingEnabled = false;
 
     const tileW = PIPE_W;
     x = Math.round(x); yTop = Math.round(yTop);
     if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
 
-    // Place cuff against the gap (at bottom of this top section)
-    const cuffDrawH = Math.min(CUFF_H, hTop);
-    const cuffSrcY  = CUFF_H - cuffDrawH;               // crop from bottom if short
-    const cuffDestY = yTop + hTop - cuffDrawH;          // bottom-aligned
-    ctx.drawImage(sleeveCuffImg, 0, cuffSrcY, tileW, cuffDrawH, x, cuffDestY, tileW, cuffDrawH);
+    const cuffH = Math.min(CUFF_TOP_H, hTop);
+    const cuffSrcY  = CUFF_TOP_H - cuffH;       // crop from bottom if short
+    const cuffDestY = yTop + hTop - cuffH;      // bottom-aligned against gap
+    ctx.drawImage(sleeveCuffTopImg, 0, cuffSrcY, tileW, cuffH, x, cuffDestY, tileW, cuffH);
 
-    // Fill remaining area above the cuff with body tiles going upward
-    let remaining = hTop - cuffDrawH;
-    let y = cuffDestY; // start just above the cuff
+    let remaining = hTop - cuffH;
+    let y = cuffDestY;
     while (remaining > 0) {
       const sliceH = Math.min(BODY_H, remaining);
-      // draw bottom-aligned slice of body
-      ctx.drawImage(
-        sleeveBodyImg,
-        0, BODY_H - sliceH, tileW, sliceH,
-        x, y - sliceH, tileW, sliceH
-      );
+      // draw body upward (bottom-aligned slice)
+      ctx.drawImage(sleeveBodyImg, 0, BODY_H - sliceH, tileW, sliceH, x, y - sliceH, tileW, sliceH);
       y -= sliceH;
       remaining -= sliceH;
     }
   }
 
+  // Bottom section (below gap): draw BOTTOM cuff against gap, then body downward
   function drawBottomPipeSection(ctx, x, yBot, w, hBot) {
-    if (hBot <= 0 || !sleeveBodyImg || !sleeveCuffImg) return;
-
+    if (hBot <= 0 || !sleeveBodyImg || !sleeveCuffBotImg) return;
     ctx.imageSmoothingEnabled = false;
 
     const tileW = PIPE_W;
     x = Math.round(x); yBot = Math.round(yBot);
     if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
 
-    // Place cuff against the gap (at top of this bottom section)
-    const cuffDrawH = Math.min(CUFF_H, hBot);
-    ctx.drawImage(sleeveCuffImg, 0, 0, tileW, cuffDrawH, x, yBot, tileW, cuffDrawH);
+    const cuffH = Math.min(CUFF_BOT_H, hBot);
+    // top-aligned against gap
+    ctx.drawImage(sleeveCuffBotImg, 0, 0, tileW, cuffH, x, yBot, tileW, cuffH);
 
-    // Fill remaining area below the cuff with body tiles going downward
-    let remaining = hBot - cuffDrawH;
-    let y = yBot + cuffDrawH;
+    let remaining = hBot - cuffH;
+    let y = yBot + cuffH;
     while (remaining > 0) {
       const sliceH = Math.min(BODY_H, remaining);
-      ctx.drawImage(
-        sleeveBodyImg,
-        0, 0, tileW, sliceH,
-        x, y, tileW, sliceH
-      );
+      ctx.drawImage(sleeveBodyImg, 0, 0, tileW, sliceH, x, y, tileW, sliceH);
       y += sliceH;
       remaining -= sliceH;
     }
@@ -485,7 +444,6 @@
 
     if (state.deathPause){
       state.deathTimer -= dt;
-
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -494,15 +452,10 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
-
-      if (state.deathTimer <= 0){
-        state.deathPause = false;
-        reset();
-      }
+      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
 
@@ -516,7 +469,6 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
-      // Magnet-lite toward orbs
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
@@ -544,29 +496,6 @@
       }
       if (!state.dead && hitBounds()) die();
 
-      if (!state.dead){
-        for (const o of state.orbs){
-          if (!o.taken){
-            const dx = p.x - o.x, dy = p.y - o.y;
-            if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true;
-              state.score += 2;
-              for (let i=0;i<12;i++){
-                const life = Math.random()*12+18;
-                state.particles.push({
-                  type:'spark',
-                  x:o.x, y:o.y,
-                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
-                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
-                });
-              }
-            }
-          }
-        }
-      }
-
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
@@ -589,15 +518,11 @@
     if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
-
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-
     explode(p.x, p.y);
-
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
-
     if (msg) msg.style.display = 'none';
   }
 
@@ -623,7 +548,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // Pipes -> draw sleeve cuff + body instead of rectangles
+    // Pipes -> sleeves
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -631,8 +556,8 @@
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      if (sleeveBodyImg.complete && sleeveCuffImg.complete &&
-          !sleeveBodyImg._error && !sleeveCuffImg._error) {
+      if (sleeveBodyImg.complete && sleeveCuffTopImg.complete && sleeveCuffBotImg.complete &&
+          !sleeveBodyImg._error && !sleeveCuffTopImg._error && !sleeveCuffBotImg._error) {
         drawTopPipeSection(ctx, x, yTop, w, hTop);
         drawBottomPipeSection(ctx, x, yBot, w, hBot);
       } else {
@@ -695,7 +620,6 @@
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        // simple fallback shape
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
