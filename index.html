@@ -668,8 +668,8 @@ for (const o of state.orbs) {
 
   // Draw the star image (64x64)
   if (orbImg && orbImg.complete && !orbImg._error) {
-    const baseSize = 64; // star.png natural size
-    const drawSize = baseSize * pulse * 0.4; // gentle pulsing scale
+    const baseSize = 40; // star.png natural size
+    const drawSize = baseSize * pulse * 0.8; // gentle pulsing scale
     ctx.save();
     ctx.translate(o.x, o.y);
     ctx.rotate(Math.sin(state.t / 500 + o.x * 0.03) * 0.15); // small twinkle rotation
