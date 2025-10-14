@@ -388,7 +388,6 @@
 
   /* ===================== PIPE RENDERING UPGRADE ===================== */
 
-  // Colors tuned for your palette
   const PIPE_COLORS = {
     bodyDark:  '#0f2b46',
     bodyMid:   '#184a74',
@@ -415,29 +414,27 @@
     ctx.closePath();
   }
 
-  // Cylindrical body with horizontal gradient, edge highlights and subtle vertical bands
   function drawPipeBody(ctx, x, y, w, h){
     if (h <= 0) return;
 
-    // Ambient glow behind pipe, helps it pop from starfield
+    // Ambient glow behind pipe
     ctx.save();
     ctx.fillStyle = PIPE_COLORS.glow;
     ctx.filter = 'blur(3px)';
     ctx.fillRect(x-4, y, w+8, h);
     ctx.restore();
 
-    // Cylinder shading
+    // Cylinder gradient
     const g = ctx.createLinearGradient(x, y, x+w, y);
     g.addColorStop(0.00, PIPE_COLORS.bodyDark);
     g.addColorStop(0.18, PIPE_COLORS.bodyMid);
     g.addColorStop(0.50, PIPE_COLORS.bodyLight);
     g.addColorStop(0.82, PIPE_COLORS.bodyMid);
     g.addColorStop(1.00, PIPE_COLORS.bodyDark);
-
     ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
 
-    // Subtle vertical bands (metal texture)
+    // Subtle vertical bands
     ctx.save();
     ctx.globalAlpha = 0.07;
     for (let i = 1; i < 4; i++){
@@ -448,17 +445,15 @@
 
     // Edge highlights
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = 'white';
-    ctx.fillRect(x + 1.5, y, 1, h);               // left thin highlight
+    ctx.globalAlpha = 0.35; ctx.fillStyle = 'white';
+    ctx.fillRect(x + 1.5, y, 1, h);
     ctx.globalAlpha = 0.18;
-    ctx.fillRect(x + w - 2.5, y, 1, h);           // right thin highlight
+    ctx.fillRect(x + w - 2.5, y, 1, h);
     ctx.restore();
   }
 
-  // Inner shadow near the gap to suggest thickness/depth
   function drawInnerShadowAtEdge(ctx, x, edgeY, w, outward){
-    const h = 16; // thickness of shadow fade
+    const h = 16; // thickness
     const y0 = outward ? edgeY : edgeY - h;
     const y1 = outward ? edgeY + h : edgeY;
 
@@ -474,15 +469,15 @@
     ctx.fillRect(x, Math.min(y0,y1), w, Math.abs(y1-y0));
   }
 
-  // Decorative bolts along the pipe body
   function drawBolts(ctx, x, y, w, h){
+    if (h < 60) return;
     ctx.save();
     ctx.fillStyle = PIPE_COLORS.bolts;
     ctx.globalAlpha = 0.55;
     const colL = x + Math.floor(w * 0.25);
     const colR = x + Math.floor(w * 0.75);
     const step = 60;
-    const jitter = ((state.t*0.03) % step); // tiny motion offset so they don't alias
+    const jitter = ((state.t*0.03) % step);
     for (let yy = y + 20 - jitter; yy < y + h - 20; yy += step){
       ctx.beginPath(); ctx.arc(colL, yy, 2, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(colR, yy, 2, 0, Math.PI*2); ctx.fill();
@@ -490,13 +485,12 @@
     ctx.restore();
   }
 
-  // Beveled cap that sits at the gap edge (with rounded corners)
   function drawRimCap(ctx, x, y, w, h, isTopCap){
     if (h <= 0) return;
 
-    // Cap body
     const r = 8;
     roundedRectPath(ctx, x - 4, y, w + 8, h, r);
+
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     if (isTopCap){
       g.addColorStop(0.00, PIPE_COLORS.rimLight);
@@ -508,7 +502,7 @@
     ctx.fillStyle = g;
     ctx.fill();
 
-    // Rim highlight line
+    // Rim highlight
     ctx.save();
     ctx.globalAlpha = 0.6;
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
@@ -519,7 +513,7 @@
     ctx.stroke();
     ctx.restore();
 
-    // Tiny screws on the cap
+    // Tiny screws
     ctx.save();
     ctx.globalAlpha = 0.7;
     ctx.fillStyle = PIPE_COLORS.bolts;
@@ -531,24 +525,16 @@
     ctx.restore();
   }
 
-  // Complete pipe segment (body + cap + details)
   function drawPipeSegment(ctx, x, y, w, h, facingGapFromBelow){
-    // Body
     drawPipeBody(ctx, x, y, w, h);
-
-    // Bolts (skip if too tiny)
-    if (h > 60) drawBolts(ctx, x, y, w, h);
-
-    // Inner shadow near gap edge (gives thickness)
+    drawBolts(ctx, x, y, w, h);
     if (facingGapFromBelow){
-      // top chunk: shadow at bottom edge
+      // top segment: edge faces down to the gap
       drawInnerShadowAtEdge(ctx, x, y + h, w, true);
-      // beveled cap stuck to the bottom
       drawRimCap(ctx, x, y + h - 10, w, 10, true);
     } else {
-      // bottom chunk: shadow at top edge
+      // bottom segment: edge faces up to the gap
       drawInnerShadowAtEdge(ctx, x, y, w, false);
-      // beveled cap stuck to the top
       drawRimCap(ctx, x, y, w, 10, false);
     }
   }
@@ -684,7 +670,7 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // --- Starfield (unchanged) ---
+    // --- Starfield (your original simple 2-layer) ---
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -701,7 +687,7 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // === PIPES (new look) ===
+    // === PIPES (upgraded) ===
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -709,14 +695,8 @@
       const yTop = 0, hTop = Math.max(0, gy - half);
       const yBot = gy + half, hBot = Math.max(0, canvas.clientHeight - yBot);
 
-      // Top segment (faces gap from below)
-      if (hTop > 0){
-        drawPipeSegment(ctx, x, yTop, w, hTop, true);
-      }
-      // Bottom segment (faces gap from above)
-      if (hBot > 0){
-        drawPipeSegment(ctx, x, yBot, w, hBot, false);
-      }
+      if (hTop > 0) drawPipeSegment(ctx, x, yTop, w, hTop, true);   // faces gap from below
+      if (hBot > 0) drawPipeSegment(ctx, x, yBot, w, hBot, false);  // faces gap from above
     }
 
     // Orbs
@@ -768,7 +748,7 @@
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        // simple fallback shape
+        // fallback shape
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
