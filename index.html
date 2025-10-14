@@ -654,7 +654,7 @@ const orbImg = makeImg('assets/star.png');
 for (const o of state.orbs) {
   if (o.taken) continue;
 
-  const pulse = 1 + 0.18 * Math.sin(state.t / 120 + o.x * 0.02);
+  const pulse = 1 + 0.06 * Math.sin(state.t / 360 + o.x * 0.01);
 
   // Draw pulsing glow behind the star
   const glowRadius = o.r * 6 * pulse;
