@@ -40,83 +40,6 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Character button (safe-area aware) */
-  .charbtn{
-    position:absolute;
-    left:calc(12px + env(safe-area-inset-left));
-    bottom:calc(12px + env(safe-area-inset-bottom));
-    z-index:4;
-    padding:10px 14px; border-radius:12px;
-    border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421);
-    color:#eaf2ff; font-weight:800; letter-spacing:.05em;
-    box-shadow:0 8px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
-    -webkit-tap-highlight-color:transparent;
-  }
-
-  /* --------- Compact character slider --------- */
-  .charslider{
-    position:fixed;
-    left:calc(10px + env(safe-area-inset-left));
-    right:calc(10px + env(safe-area-inset-right));
-    bottom:calc(10px + env(safe-area-inset-bottom));
-    z-index:10;
-    transform:translateY(120%);
-    transition:transform .16s ease-out, visibility .16s ease-out;
-    border:1px solid #26334d;
-    background:linear-gradient(180deg,#101826,#0c1421);
-    box-shadow:0 18px 48px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
-    border-radius:12px;
-    padding:6px;
-    max-width:min(520px, 94vw);
-    max-height:76px;
-    margin:0 auto;
-    visibility:hidden;
-  }
-  .charslider.show{ transform:translateY(0); visibility:visible; }
-  .chars{
-    display:flex; gap:6px; align-items:center;
-    overflow-x:auto; overscroll-behavior:contain; padding:2px;
-    -webkit-overflow-scrolling:touch;
-  }
-  .chars::-webkit-scrollbar{ height:6px; }
-  .chars::-webkit-scrollbar-thumb{ background:#22314c; border-radius:6px; }
-
-  .ctile{
-    flex:0 0 auto;
-    border:1px solid #26334d; border-radius:10px; padding:4px;
-    background:linear-gradient(180deg,#0f1725,#0c1320);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; user-select:none;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
-    width:48px; height:48px;
-  }
-  .ctile:active{ transform:scale(.98); }
-  .ctile.selected{ border-color:#4ab7ff; box-shadow:0 0 0 2px rgba(74,183,255,.25) inset; }
-
-  .cthumb{
-    width:40px; height:40px; display:grid; place-items:center;
-    border-radius:8px; background:rgba(255,255,255,.04); overflow:hidden;
-  }
-  .cthumb canvas{ display:block; width:40px; height:40px; }
-  .cthumb img{ display:block; width:40px; height:40px; object-fit:contain; image-rendering:auto; }
-
-  .close-tab{
-    position:absolute;
-    top:-18px;
-    left:50%;
-    transform:translateX(-50%);
-    height:18px; min-width:34px;
-    padding:0 6px;
-    border-radius:9px;
-    border:1px solid #2a3a5a;
-    background:linear-gradient(180deg,#111827,#0d1421);
-    color:#cfe0ff; font-weight:900; font-size:12px; letter-spacing:.02em;
-    box-shadow:0 8px 16px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
-    line-height:16px;
-  }
-
   /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
@@ -134,13 +57,6 @@
     <div class="hud" id="hud">0 • HI 0</div>
     <div class="controls">SPACE / TAP</div>
     <div class="center" id="msg">STAR-T</div>
-    <button class="charbtn" id="charBtn" type="button">Change Character</button>
-  </div>
-
-  <!-- Compact Character Slider (icons only) -->
-  <div class="charslider" id="charSlider" aria-hidden="true">
-    <button class="close-tab" id="charCloseBtn" type="button" aria-label="Close selector">▼</button>
-    <div class="chars" id="charRow"></div>
   </div>
 
   <!-- Toast container -->
@@ -151,20 +67,15 @@
   'use strict';
 
   /* ===== MOBILE-SAFE GLOW ===== */
-  const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
     const off = document.createElement('canvas');
     off.width = off.height = size;
     const c = off.getContext('2d');
-
     const g = c.createRadialGradient(size/2, size/2, size*0.08, size/2, size/2, size*0.48);
     g.addColorStop(0.00, 'rgba(255,255,255,0.70)');
     g.addColorStop(0.35, `rgba(${tint[0]},${tint[1]},${tint[2]},0.35)`);
     g.addColorStop(0.75, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
     g.addColorStop(1.00, 'rgba(0,0,0,0)');
-
     c.globalCompositeOperation = 'lighter';
     c.fillStyle = g;
     c.beginPath();
@@ -173,7 +84,6 @@
     return off;
   }
   const glowSprite = makeGlowSprite();
-
   function drawGlow(ctx, x, y, r, alpha = 1) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -194,17 +104,11 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  /* ===== GAME + SKINS ===== */
+  /* ===== GAME ===== */
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
-  const charBtn = document.getElementById('charBtn');
-
-  // slider elements
-  const charSlider = document.getElementById('charSlider');
-  const charRow    = document.getElementById('charRow');
-  const charCloseBtn = document.getElementById('charCloseBtn');
 
   /* Sizing */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -232,149 +136,21 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* Skins */
+  /* Single skin: Ghost */
   const makeImg = (src) => {
     const img = new Image();
     img.decoding = 'async';
     img.loading = 'eager';
     img.src = src;
-    img.onerror = () => {
-      img._error = true;
-      console.warn('[Skin image failed to load]', src);
-      showToast('Image not found: ' + src);
-    };
-    img.onload = () => {
-      if (!img.naturalWidth) {
-        img._error = true;
-        console.warn('[Skin image loaded but width=0]', src);
-        showToast('Bad image: ' + src);
-      } else {
-        console.log('[Skin image OK]', src, img.naturalWidth + 'x' + img.naturalHeight);
-      }
-    };
+    img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
+    img.onload  = () => { if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); } };
     return img;
   };
-
-  const skins = [
-    { id:'logo',   type:'image', name:'Logo',  img: makeImg('assets/logo.png') },
-    { id:'hat',    type:'image', name:'Hat',   img: makeImg('assets/hatcharicter.png') },
-    { id:'seiji',  type:'image', name:'Seiji', img: makeImg('assets/seiji.png') }, 
-    { id:'ghost',  type:'image', name:'Ghost', img: makeImg('assets/ghost.png') },
-  ];
-
-  function firstValidSkinIndex(){
-    for (let i=0;i<skins.length;i++){
-      const s = skins[i];
-      if (s.type === 'image' && s.img && !s.img._error) return i;
-      if (s.type !== 'image') return i;
-    }
-    return 0;
-  }
-
-  let skinIndex = Math.max(0, skins.findIndex(s => s.id === localStorage.getItem('stary_bird_skin')));
-  if (skinIndex === -1) skinIndex = 0;
-
-  function ensureValidSkin(){
-    const s = skins[skinIndex];
-    if (s && s.type === 'image' && s.img && s.img._error){
-      const old = s.id;
-      skinIndex = firstValidSkinIndex();
-      try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-      updateCharBtnLabel();
-      markSelectedTile();
-      showToast(`Switched from broken "${old}" to "${skins[skinIndex].name}"`);
-    }
-  }
-
-  function setSkinById(id){
-    const idx = skins.findIndex(s => s.id === id);
-    if (idx >= 0){
-      skinIndex = idx;
-      ensureValidSkin();
-      try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-      updateCharBtnLabel();
-      markSelectedTile();
-    }
-  }
-  function nextSkin(){
-    skinIndex = (skinIndex + 1) % skins.length;
-    ensureValidSkin();
-    try { localStorage.setItem('stary_bird_skin', skins[skinIndex].id); } catch(e){}
-    updateCharBtnLabel();
-    markSelectedTile();
-  }
-  function updateCharBtnLabel(){
-    const s = skins[skinIndex];
-    charBtn.textContent = `Change Character (${s ? s.name : '??'})`;
-  }
-  updateCharBtnLabel();
-
-  /* Character slider UI */
-  function buildCharRow(){
-    charRow.innerHTML = '';
-    skins.forEach(skin => {
-      const tile = document.createElement('button');
-      tile.type = 'button';
-      tile.className = 'ctile';
-      tile.dataset.skin = skin.id;
-
-      const thumb = document.createElement('div'); thumb.className = 'cthumb';
-
-      if (skin.type === 'image' && skin.img && !skin.img._error){
-        const img = document.createElement('img');
-        img.src = skin.img.src; img.alt = skin.name;
-        thumb.appendChild(img);
-      } else {
-        const c = document.createElement('div');
-        c.style.cssText = 'width:40px;height:40px;display:grid;place-items:center;border-radius:8px;background:#3a1620;color:#ff9aa2;font:600 10px/1 system-ui;';
-        c.textContent = 'ERR';
-        thumb.appendChild(c);
-      }
-
-      tile.appendChild(thumb);
-      tile.addEventListener('click', () => { setSkinById(skin.id); closeCharSlider(); });
-      charRow.appendChild(tile);
-    });
-    markSelectedTile();
-  }
-
-  function markSelectedTile(){
-    const tiles = charRow.querySelectorAll('.ctile');
-    tiles.forEach(t => t.classList.remove('selected'));
-    const s = skins[skinIndex];
-    const current = s ? charRow.querySelector(`.ctile[data-skin="${s.id}"]`) : null;
-    if (current) current.classList.add('selected');
-  }
-
-  function openCharSlider(){
-    if (!charRow.dataset.built){
-      buildCharRow();
-      charRow.dataset.built = '1';
-    }
-    charSlider.classList.add('show');
-    charSlider.setAttribute('aria-hidden','false');
-  }
-  function closeCharSlider(){
-    charSlider.classList.remove('show');
-    charSlider.setAttribute('aria-hidden','true');
-  }
-
-  charBtn.addEventListener('click', e => {
-    e.preventDefault();
-    if (!state.playing) {
-      const open = charSlider.classList.contains('show');
-      if (open) closeCharSlider(); else openCharSlider();
-    } else {
-      nextSkin(); // in-game fallback
-    }
-  });
-  charCloseBtn.addEventListener('click', () => closeCharSlider());
+  const ghostImg = makeImg('assets/ghost.png');
 
   /* Helpers */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-  const lerp  = (a,b,t)=> a + (b-a)*t;
-
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
   const SETTINGS = {
@@ -416,7 +192,6 @@
 
   /* Input */
   function startIfNeeded(){
-    if (charSlider.classList.contains('show')) return;
     if (!state.playing && !state.dead){
       start();
     } else if (state.dead && !state.deathPause){
@@ -515,21 +290,14 @@
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
-    closeCharSlider();
-    updateUI();
-
-    ensureValidSkin();
   }
   function start(){
     if (state.dead || state.deathPause) return;
     state.playing=true;
     state.startTime = performance.now();
     if (msg) msg.style.display = 'none';
-    closeCharSlider();
-    updateUI();
   }
   function restart(){ reset(); start(); }
-  function updateUI(){ charBtn.style.display = (!state.playing ? '' : 'none'); }
 
   /* Trail */
   function colorForScore(score){
@@ -570,21 +338,14 @@
   /* Explosion */
   function explode(px, py){
     const trail = colorForScore(state.score);
-    let skinColor = '#cfe3ff';
-    const skin = skins[skinIndex];
-    if (skin && skin.type==='shape' && skin.color) skinColor = skin.color;
-
+    const skinColor = '#cfe3ff';
     for (let i=0;i<28;i++){
       const ang = Math.random()*Math.PI*2;
       const spd = 2.2 + Math.random()*3.2;
       const life = 24 + Math.random()*18;
       state.particles.push({
-        type:'spark',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0,
-        life, maxLife:life,
-        r: 1.6 + Math.random()*2.2,
+        type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2,
         color: (Math.random()<0.6 ? trail : '#9fe9ff')
       });
     }
@@ -593,14 +354,10 @@
       const spd = 2.0 + Math.random()*3.8;
       const life = 26 + Math.random()*22;
       state.particles.push({
-        type:'shard',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
+        type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
         g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life,
-        w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI,
-        color: (Math.random()<0.5 ? skinColor : trail)
+        life, maxLife:life, w: 6 + Math.random()*6, h: 2 + Math.random()*3,
+        rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail)
       });
     }
     state.shake = 10;
@@ -616,7 +373,6 @@
 
     if (state.deathPause){
       state.deathTimer -= dt;
-
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -625,15 +381,10 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
-
-      if (state.deathTimer <= 0){
-        state.deathPause = false;
-        reset();
-      }
+      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
 
@@ -674,32 +425,6 @@
       }
       if (!state.dead && hitBounds()) die();
 
-      if (!state.dead){
-        for (const o of state.orbs){
-          if (!o.taken){
-            const dx = p.x - o.x, dy = p.y - o.y;
-            if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true;
-              state.score += 2;
-              for (let i=0;i<12;i++){
-                const life = Math.random()*12+18;
-                state.particles.push({
-                  type:'spark',
-                  x:o.x, y:o.y,
-                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
-                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
-                });
-              }
-            }
-          }
-        }
-      }
-
-      while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
-      while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
-
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -708,6 +433,9 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
+
+      while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
+      while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
@@ -719,18 +447,12 @@
     if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
-
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-
     explode(p.x, p.y);
-
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
-
     if (msg) msg.style.display = 'none';
-    charBtn.style.display = 'none';
-    closeCharSlider();
   }
 
   function draw(){
@@ -806,20 +528,17 @@
     }
     ctx.globalAlpha = 1;
 
-    // ===== CHARACTER with procedural flight animation =====
+    // ===== GHOST (procedural flight animation) =====
     if (!state.dead && !state.deathPause){
-      const skin = skins[skinIndex];
-
       const flying   = state.playing && !state.dead;
-      const baseHz   = 0.022;                                   // base animation speed
+      const baseHz   = 0.022;
       const speedMul = flying ? Math.min(2.2, 1 + Math.abs(p.vy)/6) : 1;
       const cycle    = state.t * baseHz * speedMul;
-      const flap     = Math.sin(cycle * Math.PI * 2);           // -1..1
-
+      const flap     = Math.sin(cycle * Math.PI * 2);
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
       const sAmtVel  = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
-      const sAmtFlap = flying ? 0.12 : 0.05;                     // rhythmic squash
-      const wiggle   = flying ? flap * 0.08 : flap * 0.04;       // tiny wobble
+      const sAmtFlap = flying ? 0.12 : 0.05;
+      const wiggle   = flying ? flap * 0.08 : flap * 0.04;
 
       ctx.save();
       ctx.translate(p.x, p.y + idleOffset);
@@ -832,18 +551,14 @@
       const sz = 54;
       drawGlow(ctx, 0, 0, sz * 0.78, 0.95);
 
-      if (skin.type === 'image' && skin.img && !skin.img._error){
+      if (!ghostImg._error){
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(skin.img, -sz/2, -sz/2, sz, sz);
-      } else if (skin.type === 'shape'){
-        ctx.fillStyle = skin.color || '#9fc2ff';
-        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
+        ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        ctx.fillStyle = '#ff9aa2';
-        ctx.beginPath();
-        ctx.moveTo(0,-sz*0.45); ctx.lineTo(sz*0.45,0); ctx.lineTo(0,sz*0.45); ctx.lineTo(-sz*0.45,0); ctx.closePath();
-        ctx.fill();
+        // fallback shape if image missing
+        ctx.fillStyle = '#9fc2ff';
+        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
