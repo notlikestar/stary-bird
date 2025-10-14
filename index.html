@@ -9,64 +9,99 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
   :root { color-scheme: light dark; }
-  html, body {
-    margin:0; padding:0; height:100%;
-    background:#07090d; color:#eaf2ff;
-    font:14px/1.5 system-ui, Segoe UI, Roboto, Arial, sans-serif;
-  }
-  body {
-    overflow:hidden; overscroll-behavior:none; touch-action:none;
-    -webkit-user-select:none; -webkit-touch-callout:none;
-  }
+  html, body { margin:0; padding:0; height:100%; background:#07090d; color:#eaf2ff;
+    font:14px/1.5 system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+  body { overflow:hidden; overscroll-behavior:none; touch-action:none;
+    -webkit-user-select:none; -webkit-touch-callout:none; }
   .stage { position:fixed; inset:0; width:100vw; height:100svh; background:transparent; }
-  #game  { position:absolute; left:0; top:0; width:100%; height:100%; display:block;
+  #game  { position:absolute; inset:0; width:100%; height:100%; display:block;
            background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none; }
-
-  .hud{
-    position:absolute;
-    right:calc(12px + env(safe-area-inset-right));
-    top:  calc(12px + env(safe-area-inset-top));
-    background:rgba(255,255,255,.08);
-    padding:6px 10px; border-radius:10px;
-    font-weight:800; letter-spacing:.06em; z-index:3;
-  }
-  .controls{
-    position:absolute;
-    left:calc(12px + env(safe-area-inset-left));
-    top: calc(12px + env(safe-area-inset-top));
-    opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
-  }
-  .center{ position:absolute; inset:0; display:grid; place-items:center;
-           pointer-events:none; font-weight:900; letter-spacing:.08em;
-           color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
-
-  /* Toast */
-  .toast{
-    position:fixed; left:50%; top:12px; transform:translateX(-50%);
-    background:#2a1620; color:#ffd5dc; border:1px solid #572238;
-    padding:8px 12px; border-radius:10px; font-weight:700; letter-spacing:.02em;
-    box-shadow:0 12px 24px rgba(0,0,0,.4);
-    z-index:9999; opacity:0; transition:opacity .15s ease;
-  }
+  .hud{ position:absolute; right:calc(12px + env(safe-area-inset-right));
+        top:calc(12px + env(safe-area-inset-top)); background:rgba(255,255,255,.08);
+        padding:6px 10px; border-radius:10px; font-weight:800; letter-spacing:.06em; z-index:3; }
+  .controls{ position:absolute; left:calc(12px + env(safe-area-inset-left));
+             top:calc(12px + env(safe-area-inset-top)); opacity:.6; font-weight:700;
+             color:#c9d8ff; z-index:2; }
+  .center{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;
+           font-weight:900; letter-spacing:.08em; color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
+  .toast{ position:fixed; left:50%; top:12px; transform:translateX(-50%);
+          background:#2a1620; color:#ffd5dc; border:1px solid #572238; padding:8px 12px;
+          border-radius:10px; font-weight:700; letter-spacing:.02em; box-shadow:0 12px 24px rgba(0,0,0,.4);
+          z-index:9999; opacity:0; transition:opacity .15s ease; }
   .toast.show{ opacity:1; }
 </style>
 </head>
 <body>
   <div class="stage">
-    <canvas id="game"></canvas>
+    <canvas id="game" aria-label="Stary Bird game canvas"></canvas>
     <div class="hud" id="hud">0 • HI 0</div>
-    <div class="controls">SPACE / TAP</div>
-    <div class="center" id="msg">STAR-T</div>
+    <div class="controls" aria-hidden="true">SPACE / TAP</div>
+    <div class="center" id="msg">TAP / SPACE TO START</div>
   </div>
-
-  <!-- Toast container -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
   'use strict';
 
-  /* ===== MOBILE-SAFE GLOW ===== */
+  /* =========================
+     DOM & CTX
+  ========================== */
+  const canvas = document.getElementById('game');
+  const ctx    = canvas.getContext('2d', { alpha: true });
+  const hud    = document.getElementById('hud');
+  const msg    = document.getElementById('msg');
+  const toastEl= document.getElementById('toast');
+
+  /* =========================
+     ENV / SETTINGS
+  ========================== */
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
+
+  const SETTINGS = {
+    speedBase: isMobile ? 3.6 : 4.2,
+    speedMax:  isMobile ? 8.2 : 8.8,
+    accelEarly: 0.00025,
+    accelMain:  0.00060,
+    gapStart: 150,
+    gapMin: 132,
+    gapShrinkPerMs: 0.0035,
+    maxSlopePxPerSec: 240,
+    movingProb: 0.14,
+    doubleProb: 0.10,
+    doubleSpacing: 130,
+    movingAmpMax: 24,
+    respawnDelayMs: 1000,
+    pipeW: 70,
+    margin: 60
+  };
+
+  /* =========================
+     TOOLS / HELPERS
+  ========================== */
+  const rand  = (a,b)=> Math.random()*(b-a)+a;
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+  const now   = () => performance.now();
+
+  function makeImg(src) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.src = src;
+    img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
+    img.onload  = () => { if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); } };
+    return img;
+  }
+
+  function showToast(text){
+    if (!toastEl) return;
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove('show'), 2000);
+  }
+
+  // Glow sprite
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
     const off = document.createElement('canvas');
     off.width = off.height = size;
@@ -93,129 +128,97 @@
     ctx.restore();
   }
 
-  /* ===== TOAST ===== */
-  const toastEl = document.getElementById('toast');
-  let toastTimer = null;
-  function showToast(msg){
-    if (!toastEl) return;
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
-  }
-
-  /* ===== GAME ===== */
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d', { alpha: true });
-  const hud = document.getElementById('hud');
-  const msg = document.getElementById('msg');
-
-  /* Sizing */
+  /* =========================
+     DPR / SIZING
+  ========================== */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
-    const w = Math.floor(vv ? vv.width  : window.innerWidth);
-    const h = Math.floor(vv ? vv.height : window.innerHeight);
-    canvas.style.width  = w + 'px';
-    canvas.style.height = h + 'px';
-    const cw = Math.max(1, Math.floor(w * DPR));
-    const ch = Math.max(1, Math.floor(h * DPR));
-    canvas.width = cw; canvas.height = ch;
+    const cssW = Math.floor(vv ? vv.width  : window.innerWidth);
+    const cssH = Math.floor(vv ? vv.height : window.innerHeight);
+    canvas.style.width  = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width  = Math.max(1, Math.floor(cssW * DPR));
+    canvas.height = Math.max(1, Math.floor(cssH * DPR));
     ctx.setTransform(DPR,0,0,DPR,0,0);
   }
-  new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
-  window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
+  const ro = new ResizeObserver(() => {
+    DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+    sizeToViewport();
+  });
+  ro.observe(document.documentElement);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
+  window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
   sizeToViewport();
 
   // Prevent double-tap zoom on iOS
   let lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) e.preventDefault();
-    lastTouchEnd = now;
+    const t = Date.now();
+    if (t - lastTouchEnd <= 300) e.preventDefault();
+    lastTouchEnd = t;
   }, {passive:false});
 
-  /* Single skin: Ghost */
-  const makeImg = (src) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.src = src;
-    img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
-    img.onload  = () => { if (!img.naturalWidth) { img._error = true; showToast('Bad image: ' + src); } };
-    return img;
-  };
-  const ghostImg = makeImg('assets/ghost.png');
+  /* =========================
+     ASSETS
+  ========================== */
+  const ghostImg = makeImg('assets/ghost.png'); // keep your existing ghost
 
-  /* Helpers */
-  const rand  = (a,b)=> Math.random()*(b-a)+a;
-  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
-
-  const SETTINGS = {
-    speedBase: isMobile ? 3.6 : 4.2,
-    speedMax:  isMobile ? 8.2 : 8.8,
-    accelEarly: 0.00025,
-    accelMain:  0.00060,
-    gapMin: 132,
-    gapShrinkPerMs: 0.0035,
-    maxSlopePxPerSec: 240,
-    movingProb: 0.14,
-    doubleProb: 0.10,
-    doubleSpacing: 130,
-    movingAmpMax: 24,
-    respawnDelayMs: 1000
-  };
-
-  /* State */
+  /* =========================
+     STATE
+  ========================== */
   const state = {
-    playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
+    playing:false, dead:false, score:0,
+    hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
     gravity:0.33, thrust:0.6, maxVy:9,
-    speed: SETTINGS.speedBase, gap:150,
+    speed: SETTINGS.speedBase, gap: SETTINGS.gapStart,
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
-    maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
+    lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[], particles:[],
-
-    trailBase:'#cfe3ff',
-    trailBlue:'#4ab7ff',
-    trailPurple:'#b06cff',
-    trailGold:'#ffd54a',
-
-    startTime:0,
-    deathPause:false,
-    deathTimer:0
+    startTime:0, deathPause:false, deathTimer:0
   };
 
-  const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
+  const TRAIL = {
+    base:'#cfe3ff', blue:'#4ab7ff', purple:'#b06cff', gold:'#ffd54a'
+  };
 
-  /* Input */
+  const player = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
+
+  /* =========================
+     INPUT
+  ========================== */
   function startIfNeeded(){
-    if (!state.playing && !state.dead){
-      start();
-    } else if (state.dead && !state.deathPause){
-      restart();
+    if (!state.playing && !state.dead){ start(); }
+    else if (state.dead && !state.deathPause){ restart(); }
+  }
+  function onKey(e, down){
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
+      e.preventDefault();
+      player.hold = down;
+      if (down) startIfNeeded();
+      else if (state.dead && !state.deathPause) restart();
     }
   }
-  window.addEventListener('keydown', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = true; startIfNeeded();
-    }
-  }, {passive:false});
-  window.addEventListener('keyup', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = false;
-      if (state.dead && !state.deathPause) restart();
-    }
-  }, {passive:false});
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
-  canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
+  window.addEventListener('keydown', e => onKey(e,true), {passive:false});
+  window.addEventListener('keyup',   e => onKey(e,false), {passive:false});
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); player.hold = true; startIfNeeded(); }, {passive:false});
+  canvas.addEventListener('touchend',   e => { e.preventDefault(); player.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
-  /* World */
+  /* =========================
+     WORLD GEN
+  ========================== */
+  function currentGapY(pipe){
+    if (pipe.type === 'moving'){
+      return pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp;
+    }
+    return pipe.baseGapY;
+  }
+
   function addPipe(){
-    const h = canvas.clientHeight, margin = 60;
+    const h = canvas.clientHeight;
 
+    // spawn cadence based on current speed
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
@@ -223,15 +226,12 @@
 
     const mid = h/2;
     const prev = state.lastGapY ?? mid;
-    const safeTop = margin + state.gap/2;
-    const safeBot = h - margin - state.gap/2;
+    const safeTop = SETTINGS.margin + state.gap/2;
+    const safeBot = h - SETTINGS.margin - state.gap/2;
 
     const allowedDelta = Math.min(SETTINGS.maxSlopePxPerSec * timeToNext, 170);
-    let proposed = prev + rand(-allowedDelta, +allowedDelta);
-
-    const wobble = rand(-8, 8);
-    const gapY = clamp(proposed + wobble, safeTop, safeBot);
-    const w = 70;
+    const proposed = prev + rand(-allowedDelta, +allowedDelta) + rand(-8, 8);
+    const gapY = clamp(proposed, safeTop, safeBot);
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
@@ -239,151 +239,135 @@
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
 
+    // primary pipe
     state.pipes.push({
       x: canvas.clientWidth + 40,
       baseGapY: gapY,
-      w,
+      w: SETTINGS.pipeW,
       passed:false,
       type: isMoving ? 'moving' : 'normal',
-      amp,
-      speed: isMoving ? rand(0.8, 1.2) : 0,
-      phase: Math.random()*Math.PI*2,
+      amp, speed: isMoving ? rand(0.8, 1.2) : 0, phase: Math.random()*Math.PI*2,
       doubleGap:false
     });
 
+    // occasional double
     if (isDouble){
       state.pipes.push({
-        x: canvas.clientWidth + 40 + w + SETTINGS.doubleSpacing,
+        x: canvas.clientWidth + 40 + SETTINGS.pipeW + SETTINGS.doubleSpacing,
         baseGapY: clamp(gapY + rand(-24, 24), safeTop, safeBot),
-        w,
-        passed:false,
-        type:'normal',
-        amp:0, speed:0, phase:0,
-        doubleGap:true
+        w: SETTINGS.pipeW, passed:false, type:'normal', amp:0, speed:0, phase:0, doubleGap:true
       });
     }
 
     state.lastGapY = gapY;
     state.lastPipeX = canvas.clientWidth + 40;
 
+    // orb near gap
     if (Math.random() < 0.55){
-      state.orbs.push({ x: canvas.clientWidth + 40 + w/2, y: gapY, r:8, taken:false, t0: state.t });
+      state.orbs.push({ x: canvas.clientWidth + 40 + SETTINGS.pipeW/2, y: gapY, r:8, taken:false, t0: state.t });
     }
   }
 
-  const currentGapY = (pipe) => {
-    if (pipe.type === 'moving'){
-      return pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp;
-    }
-    return pipe.baseGapY;
-  };
-
-  /* Flow */
+  /* =========================
+     GAME FLOW
+  ========================== */
   function reset(){
-    state.playing=false; state.dead=false;
-    state.deathPause=false; state.deathTimer=0;
+    state.playing=false; state.dead=false; state.deathPause=false; state.deathTimer=0;
     state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
+    state.speed=SETTINGS.speedBase; state.gap=SETTINGS.gapStart; state.gravity=0.33; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0;
     state.spawn=30; state.t=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
-    p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
+    player.x=180; player.y=canvas.clientHeight/2; player.vy=0; player.rot=0; player.targetRot=0; player.hold=false;
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
   }
+
   function start(){
     if (state.dead || state.deathPause) return;
     state.playing=true;
-    state.startTime = performance.now();
+    state.startTime = now();
     if (msg) msg.style.display = 'none';
   }
+
   function restart(){ reset(); start(); }
 
-  /* Trail */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
-    return state.trailBase;
+    if (score >= 50) return TRAIL.gold;
+    if (score >= 25) return TRAIL.purple;
+    if (score >= 10) return TRAIL.blue;
+    return TRAIL.base;
   }
+
   function addTrail(){
     const c = colorForScore(state.score);
     for (let i=0;i<3;i++){
       const life = Math.random()*14+24;
       state.particles.push({
         type:'spark',
-        x: p.x - 26 + Math.random()*10,
-        y: p.y + Math.random()*10 - 5,
+        x: player.x - 26 + Math.random()*10,
+        y: player.y + Math.random()*10 - 5,
         vx: -state.speed*0.6 + (Math.random()*-0.6),
         vy: (Math.random()-.5)*1.3,
-        g: 0, spin:0,
-        life, maxLife: life,
-        r: Math.random()*2+2,
-        color: c
+        g: 0, spin:0, life, maxLife: life, r: Math.random()*2+2, color: c
       });
     }
   }
 
-  /* Collisions */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
-    if (p.x + p.w*0.35 > pipe.x && p.x - p.w*0.35 < pipe.x + pipe.w){
-      if (p.y - p.h*0.35 < gy - half || p.y + p.h*0.35 > gy + half) return true;
+    if (player.x + player.w*0.35 > pipe.x && player.x - player.w*0.35 < pipe.x + pipe.w){
+      if (player.y - player.h*0.35 < gy - half || player.y + player.h*0.35 > gy + half) return true;
     }
     return false;
   }
-  function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
+  const hitBounds = () => (player.y < 0) || (player.y > canvas.clientHeight);
 
-  /* Explosion */
   function explode(px, py){
     const trail = colorForScore(state.score);
     const skinColor = '#cfe3ff';
     for (let i=0;i<28;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.2 + Math.random()*3.2;
-      const life = 24 + Math.random()*18;
-      state.particles.push({
-        type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff')
-      });
+      const ang = Math.random()*Math.PI*2, spd = 2.2 + Math.random()*3.2, life = 24 + Math.random()*18;
+      state.particles.push({ type:'spark', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        g: 0.08, spin:0, life, maxLife:life, r: 1.6 + Math.random()*2.2, color: (Math.random()<0.6 ? trail : '#9fe9ff') });
     }
     for (let i=0;i<16;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.0 + Math.random()*3.8;
-      const life = 26 + Math.random()*22;
-      state.particles.push({
-        type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
-        g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life, w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail)
-      });
+      const ang = Math.random()*Math.PI*2, spd = 2.0 + Math.random()*3.8, life = 26 + Math.random()*22;
+      state.particles.push({ type:'shard', x:px, y:py, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
+        g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1), life, maxLife:life,
+        w: 6 + Math.random()*6, h: 2 + Math.random()*3, rot: Math.random()*Math.PI, color: (Math.random()<0.5 ? skinColor : trail) });
     }
-    state.shake = 10;
-    state.flash = 0.5;
+    state.shake = 10; state.flash = 0.5;
   }
 
-  /* Loop */
-  let last = performance.now();
-  function loop(t){
+  function die(){
+    if (state.dead || state.deathPause) return;
+    state.dead = true; state.playing = false;
+    state.hi = Math.max(state.hi, state.score);
+    try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
+    explode(player.x, player.y);
+    state.deathPause = true;
+    state.deathTimer = SETTINGS.respawnDelayMs;
+    if (msg) msg.style.display = 'none';
+  }
+
+  /* =========================
+     LOOP
+  ========================== */
+  let last = now();
+  let rafId = 0;
+
+  function step(t){
     const dt = Math.min(32, t - last); last = t;
     const step = dt / 16.67;
     state.t += dt;
 
     if (state.deathPause){
-      state.deathTimer -= dt;
-      for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
-        if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        prt.life -= step;
-      }
-      while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
+      tickParticles(step);
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
-      requestAnimationFrame(loop);
+      rafId = requestAnimationFrame(step);
+      state.deathTimer -= dt;
       if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
@@ -393,75 +377,71 @@
       const accel = (sinceStart < 3000) ? SETTINGS.accelEarly : SETTINGS.accelMain;
       state.speed = Math.min(SETTINGS.speedMax, state.speed + accel * dt);
       state.gap   = Math.max(SETTINGS.gapMin, state.gap - SETTINGS.gapShrinkPerMs * dt);
-    }
 
-    if (state.playing && !state.dead){
-      if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
-
+      // input & physics
+      if (player.hold){ player.vy -= state.thrust * step; addTrail(); }
+      // soft attraction to orbs
       for (const o of state.orbs){
         if (o.taken) continue;
-        const dx = p.x - o.x, dy = p.y - o.y;
-        const d2 = dx*dx + dy*dy;
+        const dx = player.x - o.x, dy = player.y - o.y, d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
           const pull = 0.6 * step;
-          p.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - p.y) * pull / 100));
+          player.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - player.y) * pull / 100));
         }
       }
 
-      p.vy += state.gravity * step;
-      p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
-      p.y  += p.vy * step;
-      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
-      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
+      player.vy += state.gravity * step;
+      player.vy = Math.max(-9, Math.min(state.maxVy, player.vy));
+      player.y  += player.vy * step;
+      player.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((player.vy+9)/18) * (0.8 - (-0.6))));
+      player.rot += (player.targetRot - player.rot) * 0.2;
 
+      // spawn / advance
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
+      // scoring & collisions
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
+        if (!pipe.passed && player.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
       if (!state.dead && hitBounds()) die();
 
-      for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
-        if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
-        prt.life -= step;
-      }
-      while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
+      tickParticles(step);
 
+      // cull
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
     }
 
     state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
     draw();
-    requestAnimationFrame(loop);
+    rafId = requestAnimationFrame(step);
   }
 
-  function die(){
-    if (state.dead || state.deathPause) return;
-    state.dead = true;
-    state.playing = false;
-    state.hi = Math.max(state.hi, state.score);
-    try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-    explode(p.x, p.y);
-    state.deathPause = true;
-    state.deathTimer = SETTINGS.respawnDelayMs;
-    if (msg) msg.style.display = 'none';
+  function tickParticles(step){
+    for (const prt of state.particles){
+      prt.vy += (prt.g||0) * step;
+      prt.x  += prt.vx * step;
+      prt.y  += prt.vy * step;
+      if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
+      prt.life -= step;
+    }
+    while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
   }
 
+  /* =========================
+     RENDER
+  ========================== */
   function draw(){
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // background stars
+    // parallax stars
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -478,11 +458,9 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // pipes
+    // pipes (rect fallback; still looks clean)
     for (const pipe of state.pipes){
-      const gy = (pipe.type==='moving')
-        ? pipe.baseGapY + Math.sin(pipe.phase + state.t/1000 * pipe.speed)*pipe.amp
-        : pipe.baseGapY;
+      const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
       const yTop = 0, hTop = gy - half;
@@ -515,11 +493,8 @@
       if (a <= 0) continue;
       ctx.globalAlpha = a;
       ctx.fillStyle = prt.color;
-
       if (prt.type === 'shard'){
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
+        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
@@ -528,22 +503,21 @@
     }
     ctx.globalAlpha = 1;
 
-    // ===== GHOST (procedural flight animation) =====
+    // player
     if (!state.dead && !state.deathPause){
       const flying   = state.playing && !state.dead;
       const baseHz   = 0.022;
-      const speedMul = flying ? Math.min(2.2, 1 + Math.abs(p.vy)/6) : 1;
+      const speedMul = flying ? Math.min(2.2, 1 + Math.abs(player.vy)/6) : 1;
       const cycle    = state.t * baseHz * speedMul;
       const flap     = Math.sin(cycle * Math.PI * 2);
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
-      const sAmtVel  = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
+      const sAmtVel  = Math.min(0.18, Math.max(0, Math.abs(player.vy)/12 * 0.15));
       const sAmtFlap = flying ? 0.12 : 0.05;
       const wiggle   = flying ? flap * 0.08 : flap * 0.04;
 
       ctx.save();
-      ctx.translate(p.x, p.y + idleOffset);
-      ctx.rotate(p.rot + wiggle);
-
+      ctx.translate(player.x, player.y + idleOffset);
+      ctx.rotate(player.rot + wiggle);
       const sx = (1 + sAmtVel) * (1 + flap *  sAmtFlap);
       const sy = (1 - sAmtVel) * (1 - flap *  sAmtFlap);
       ctx.scale(sx, sy);
@@ -556,7 +530,6 @@
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        // fallback shape if image missing
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
@@ -573,8 +546,28 @@
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
-  reset();
-  requestAnimationFrame(loop);
+  /* =========================
+     PAGE VISIBILITY (pause)
+  ========================== */
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      cancelAnimationFrame(rafId);
+      last = now(); // reset delta on resume
+    } else {
+      last = now();
+      rafId = requestAnimationFrame(step);
+    }
+  });
+
+  /* =========================
+     BOOT
+  ========================== */
+  function boot(){
+    reset();
+    last = now();
+    rafId = requestAnimationFrame(step);
+  }
+  boot();
 })();
 </script>
 </body>
