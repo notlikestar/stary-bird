@@ -77,6 +77,7 @@
     g.addColorStop(0.35, `rgba(${tint[0]},${tint[1]},${tint[2]},0.35)`);
     g.addColorStop(0.75, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
     g.addColorStop(1.00, 'rgba(0,0,0,0)');
+
     c.globalCompositeOperation = 'lighter';
     c.fillStyle = g;
     c.beginPath();
@@ -385,108 +386,136 @@
     state.flash = 0.5;
   }
 
-  /* ===== CLEAN PIPE RENDERER ===== */
-  const PIPE_STYLE = {
-    bodyTop : "#0e2a44",
-    bodyMid : "#134062",
-    bodyBot : "#1a5b8e",
-    sideShadow: "rgba(0,0,0,0.26)",
-    sideLight : "rgba(210,235,255,0.16)",
-    rimLine   : "rgba(200,230,255,0.7)",
-    gapAO     : "rgba(0,0,0,0.18)"
+  /* ===================== Fancy Pipe Drawing ===================== */
+
+  // Colors tuned to match your palette
+  const PIPE_COLORS = {
+    bodyLeft:  '#0e2a45',
+    bodyMid:   '#1a4a74',
+    bodyRight: '#0c2238',
+    edgeDark:  '#071a2b',
+    capLight:  '#8fc6ff',
+    capMid:    '#4aa0f0',
+    capDark:   '#1c5e98',
+    highlight: 'rgba(255,255,255,0.25)',
+    innerLine: 'rgba(200,230,255,0.06)'
   };
 
-  // rounded rect
-  function rrect(ctx, x, y, w, h, r){
-    const rr = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
-    ctx.beginPath();
-    ctx.moveTo(x+rr, y);
-    ctx.lineTo(x+w-rr, y);
-    ctx.quadraticCurveTo(x+w, y, x+w, y+rr);
-    ctx.lineTo(x+w, y+h-rr);
-    ctx.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
-    ctx.lineTo(x+rr, y+h);
-    ctx.quadraticCurveTo(x, y+h, x, y+h-rr);
-    ctx.lineTo(x, y+rr);
-    ctx.quadraticCurveTo(x, y, x+rr, y);
-    ctx.closePath();
+  function roundRectPath(c, x, y, w, h, r){
+    const rr = Math.min(r, w*0.5, h*0.5);
+    c.beginPath();
+    c.moveTo(x+rr, y);
+    c.lineTo(x+w-rr, y);
+    c.quadraticCurveTo(x+w, y, x+w, y+rr);
+    c.lineTo(x+w, y+h-rr);
+    c.quadraticCurveTo(x+w, y+h, x+w-rr, y+h);
+    c.lineTo(x+rr, y+h);
+    c.quadraticCurveTo(x, y+h, x, y+h-rr);
+    c.lineTo(x, y+rr);
+    c.quadraticCurveTo(x, y, x+rr, y);
+    c.closePath();
   }
 
-  function drawPipeSection(ctx, x, y, w, h, isTop){
+  function pipeGradient(c, x, y, w, h){
+    const g = c.createLinearGradient(x, 0, x+w, 0); // horizontal
+    g.addColorStop(0.00, PIPE_COLORS.bodyLeft);
+    g.addColorStop(0.50, PIPE_COLORS.bodyMid);
+    g.addColorStop(1.00, PIPE_COLORS.bodyRight);
+    return g;
+  }
+
+  function drawPipeBody(c, x, y, w, h){
     if (h <= 0) return;
+    // main body with subtle rounded corners
+    const r = Math.min(10, Math.min(w, h) * 0.2);
+    roundRectPath(c, x, y, w, h, r);
+    c.fillStyle = pipeGradient(c, x, y, w, h);
+    c.fill();
 
-    ctx.save();
+    // inner soft vertical highlights (simulate cylindrical sheen)
+    c.save();
+    c.clip();
+    c.globalAlpha = 0.55;
+    const sheenW = Math.max(6, w * 0.16);
+    const midX   = x + w * 0.5 - sheenW * 0.5;
+    const g1 = c.createLinearGradient(midX, 0, midX + sheenW, 0);
+    g1.addColorStop(0, 'rgba(255,255,255,0.08)');
+    g1.addColorStop(0.5, 'rgba(255,255,255,0.16)');
+    g1.addColorStop(1, 'rgba(255,255,255,0.08)');
+    c.fillStyle = g1;
+    c.fillRect(midX, y, sheenW, h);
 
-    // 1) main vertical body gradient
-    const gV = ctx.createLinearGradient(x, y, x, y + h);
-    gV.addColorStop(0.00, PIPE_STYLE.bodyTop);
-    gV.addColorStop(0.55, PIPE_STYLE.bodyMid);
-    gV.addColorStop(1.00, PIPE_STYLE.bodyBot);
-
-    rrect(ctx, Math.round(x)+0.5, Math.round(y)+0.5, Math.round(w)-1, Math.round(h)-1, 12);
-    ctx.fillStyle = gV;
-    ctx.fill();
-
-    // 2) horizontal cylinder shading (subtle)
-    const gH = ctx.createLinearGradient(x, y, x + w, y);
-    gH.addColorStop(0.00, PIPE_STYLE.sideShadow);
-    gH.addColorStop(0.35, "rgba(0,0,0,0)");
-    gH.addColorStop(0.65, "rgba(255,255,255,0)");
-    gH.addColorStop(1.00, PIPE_STYLE.sideLight);
-    ctx.globalCompositeOperation = "overlay";
-    ctx.fillStyle = gH;
-    ctx.fill();
-
-    // 3) slim highlight stripe (no seam)
-    ctx.globalCompositeOperation = "screen";
-    const stripeW = Math.max(4, Math.floor(w * 0.12));
-    const stripeX = Math.floor(x + w * 0.33 - stripeW/2);
-    const gS = ctx.createLinearGradient(stripeX, y, stripeX + stripeW, y);
-    gS.addColorStop(0.0, "rgba(255,255,255,0)");
-    gS.addColorStop(0.5, "rgba(255,255,255,0.16)");
-    gS.addColorStop(1.0, "rgba(255,255,255,0)");
-    ctx.fillStyle = gS;
-    ctx.fillRect(stripeX, y+6, stripeW, h-12);
-
-    // reset composite
-    ctx.globalCompositeOperation = "source-over";
-
-    // 4) rim/cap near the gap
-    const capH = Math.min(8, Math.max(6, Math.floor(w*0.1)));
-    const capY = isTop ? y + h - capH : y;
-    rrect(ctx, x-0.5, capY - (isTop?1:0), w+1, capH+1, 8);
-    const gCap = ctx.createLinearGradient(x, capY, x, capY + capH);
-    if (isTop){
-      gCap.addColorStop(0, "#1b649e");
-      gCap.addColorStop(1, "#144a73");
-    } else {
-      gCap.addColorStop(0, "#154e79");
-      gCap.addColorStop(1, "#1a649b");
+    // faint horizontal banding for texture
+    c.globalAlpha = 1;
+    c.fillStyle = PIPE_COLORS.innerLine;
+    const step = 14;
+    for (let yy = Math.floor(y/step)*step; yy < y+h; yy += step){
+      c.fillRect(x+2, yy, w-4, 1);
     }
-    ctx.fillStyle = gCap;
-    ctx.fill();
+    c.restore();
 
-    // crisp rim line
-    ctx.strokeStyle = PIPE_STYLE.rimLine;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const lineY = isTop ? (capY - 0.5) : (capY + capH + 0.5);
-    ctx.moveTo(x + 2, lineY);
-    ctx.lineTo(x + w - 2, lineY);
-    ctx.stroke();
-
-    ctx.restore();
+    // dark edges to add depth
+    c.strokeStyle = PIPE_COLORS.edgeDark;
+    c.lineWidth = 2;
+    roundRectPath(c, x+0.5, y+0.5, w-1, h-1, r);
+    c.stroke();
   }
 
-  function drawGapAO(ctx, x, y, w, isTop){
-    // softer, shorter AO so it doesn’t look dirty
-    const aoH = 10;
-    const g = ctx.createLinearGradient(x, y + (isTop ? -aoH : 0), x, y + (isTop ? 0 : aoH));
-    g.addColorStop(0.0, "rgba(0,0,0,0)");
-    g.addColorStop(1.0, PIPE_STYLE.gapAO);
-    ctx.fillStyle = g;
-    if (isTop) ctx.fillRect(x, y-aoH, w, aoH);
-    else       ctx.fillRect(x, y,     w, aoH);
+  // Rounded cap at the gap edge (slightly wider than pipe, with lip and highlight)
+  function drawPipeCap(c, x, y, w, capH, isTop){
+    const lipOver = Math.max(6, Math.floor(w * 0.10)); // overhang
+    const capX = x - lipOver/2;
+    const capW = w + lipOver;
+    const capY = isTop ? (y - capH) : y;
+
+    // cap gradient (slightly brighter)
+    const g = c.createLinearGradient(capX, 0, capX+capW, 0);
+    g.addColorStop(0, PIPE_COLORS.capDark);
+    g.addColorStop(0.5, PIPE_COLORS.capMid);
+    g.addColorStop(1, PIPE_COLORS.capDark);
+
+    // cap shape (rounded rectangle)
+    const r = Math.min(12, capH * 0.6);
+    roundRectPath(c, capX, capY, capW, capH, r);
+    c.fillStyle = g;
+    c.fill();
+
+    // glossy edge line
+    c.save();
+    c.clip();
+    c.globalAlpha = 0.75;
+    c.fillStyle = PIPE_COLORS.highlight;
+    const hLineY = isTop ? (capY + capH - 3) : (capY + 2);
+    c.fillRect(capX + 6, hLineY, capW - 12, 2);
+    c.restore();
+
+    // thin dark outline
+    c.strokeStyle = PIPE_COLORS.edgeDark;
+    c.lineWidth = 1.5;
+    roundRectPath(c, capX+0.5, capY+0.5, capW-1, capH-1, r);
+    c.stroke();
+
+    // small drop shadow to lift the lip
+    c.save();
+    c.globalAlpha = 0.35;
+    c.fillStyle = 'black';
+    const shadowH = 6;
+    if (isTop){
+      // shadow below top cap
+      const sg = c.createLinearGradient(capX, capY+capH, capX, capY+capH+shadowH);
+      sg.addColorStop(0, 'rgba(0,0,0,0.35)');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = sg;
+      c.fillRect(capX+6, capY+capH, capW-12, shadowH);
+    }else{
+      // shadow above bottom cap
+      const sg = c.createLinearGradient(capX, capY, capX, capY-shadowH);
+      sg.addColorStop(0, 'rgba(0,0,0,0.35)');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = sg;
+      c.fillRect(capX+6, capY-shadowH, capW-12, shadowH);
+    }
+    c.restore();
   }
 
   /* ----------------------- Loop (TIME-BASED) ----------------------- */
@@ -498,6 +527,7 @@
 
     if (state.deathPause){
       state.deathTimer -= dt;
+
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -506,9 +536,11 @@
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
+
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
       draw();
       requestAnimationFrame(loop);
+
       if (state.deathTimer <= 0){
         state.deathPause = false;
         reset();
@@ -554,6 +586,29 @@
       }
       if (!state.dead && hitBounds()) die();
 
+      if (!state.dead){
+        for (const o of state.orbs){
+          if (!o.taken){
+            const dx = p.x - o.x, dy = p.y - o.y;
+            if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
+              o.taken = true;
+              state.score += 2;
+              for (let i=0;i<12;i++){
+                const life = Math.random()*12+18;
+                state.particles.push({
+                  type:'spark',
+                  x:o.x, y:o.y,
+                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
+                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
+                  g:0, spin:0,
+                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                });
+              }
+            }
+          }
+        }
+      }
+
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
@@ -576,11 +631,15 @@
     if (state.dead || state.deathPause) return;
     state.dead = true;
     state.playing = false;
+
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
+
     explode(p.x, p.y);
+
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
+
     if (msg) msg.style.display = 'none';
   }
 
@@ -590,7 +649,7 @@
 
     ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
 
-    // stars
+    // background stars
     ctx.globalAlpha = 0.06;
     for (let i=0;i<70;i++){
       const x = (i*130 - (state.t*0.035)%130);
@@ -607,25 +666,26 @@
 
     ctx.save(); ctx.translate(sx, sy);
 
-    // CLEAN PIPES
+    // ======== Nicer Pipes with rounded lips + horizontal shading ========
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
+
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
-      if (hTop > 0){
-        drawPipeSection(ctx, x, yTop, w, hTop, true);
-        drawGapAO(ctx, x, yTop + hTop, w, true);
-      }
-      if (hBot > 0){
-        drawPipeSection(ctx, x, yBot, w, hBot, false);
-        drawGapAO(ctx, x, yBot, w, false);
-      }
+      // Body sections
+      drawPipeBody(ctx, x, yTop, w, hTop);
+      drawPipeBody(ctx, x, yBot, w, hBot);
+
+      // Rounded caps at gap
+      const capH = Math.min(22, Math.max(14, Math.floor(w * 0.28)));
+      if (hTop > 0) drawPipeCap(ctx, x, yTop + hTop, w, capH, /*isTop*/true);
+      if (hBot > 0) drawPipeCap(ctx, x, yBot,       w, capH, /*isTop*/false);
     }
 
-    // orbs
+    // Orbs
     for (const o of state.orbs){
       if (o.taken) continue;
       const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
@@ -639,7 +699,7 @@
       ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // particles
+    // Particles
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -657,7 +717,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // player
+    // Player (ghost)
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
@@ -666,12 +726,15 @@
       const sz = 54;
       const sAmt = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
       ctx.scale(1 + sAmt, 1 - sAmt);
+
       drawGlow(ctx, 0, 0, sz * 0.78, 0.95);
+
       if (ghostImg && !ghostImg._error){
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
+        // simple fallback shape
         ctx.fillStyle = '#9fc2ff';
         ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
