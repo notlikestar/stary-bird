@@ -148,7 +148,7 @@
     img.onerror = () => { img._error = true; console.warn('[Image failed]', src); showToast('Image not found: ' + src); };
     img.onload = () => {
       if (!img.naturalWidth) { img._error = true; console.warn('[Bad image: width=0]', src); showToast('Bad image: ' + src); }
-      else { console.log('[Image OK]', src, img.naturalWidth + 'x' + img.naturalHeight); }
+      else { /* ok */ }
     };
     return img;
   }
@@ -223,9 +223,10 @@
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
 
+    // FIXED: declare baseMax properly (no implicit globals in 'use strict')
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    the_baseMax = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, the_baseMax));
+    const baseMax = state.maxSpawnFrames * (4.2/state.speed);
+    state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
 
     const mid = h/2;
