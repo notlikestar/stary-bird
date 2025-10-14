@@ -136,6 +136,9 @@
     const ch = Math.max(1, Math.floor((h + 2) * DPR));
     canvas.width = cw; canvas.height = ch;
     ctx.setTransform(DPR,0,0,DPR,0,0);
+
+    // Re-seed stars to fill new viewport (keeps continuity feel with overscan).
+    initStars();
   }
   new ResizeObserver(() => { DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1)); sizeToViewport(); }).observe(document.body);
   window.addEventListener('orientationchange', () => setTimeout(sizeToViewport, 150), {passive:true});
@@ -172,32 +175,6 @@
 
   // orb image (load once)
   const orbImg = makeImg('assets/star.png');
-
-  /* ----------------------- Audio (orb collect) ----------------------- */
-  // Place a short file at assets/sfx_collect.mp3 (or .wav / .ogg); this will be unlocked on first input.
-  const sfxCollect = new Audio('assets/orbsound.mp3');
-  sfxCollect.preload = 'auto';
-  sfxCollect.volume = 0.65;
-
-  function playCollectSfx() {
-    // clone for overlap + slight random pitch for juice
-    const a = sfxCollect.cloneNode();
-    a.volume = sfxCollect.volume;
-    a.playbackRate = 0.96 + Math.random()*0.10;
-    a.play().catch(()=>{ /* ignore */ });
-  }
-
-  // Attempt an early unlock on first user gesture (called in startIfNeeded/start)
-  let audioUnlocked = false;
-  function unlockAudioOnce(){
-    if (audioUnlocked) return;
-    audioUnlocked = true;
-    // quick play/pause to satisfy iOS gesture requirement
-    sfxCollect.play().then(() => {
-      sfxCollect.pause();
-      sfxCollect.currentTime = 0;
-    }).catch(()=>{ /* will still work when collecting after gesture */ });
-  }
 
   let PIPE_W = 40;  // exact width used for sleeves
   let BODY_H = 100; // sleeve body tile height
@@ -268,18 +245,97 @@
     startTime:0,
     elapsed:0,
     deathPause:false,
-    deathTimer:0
+    deathTimer:0,
+
+    // ★ New: layered starfield (continuous & scattered)
+    starsFar:[],
+    starsMid:[],
+    starsNear:[]
   };
+
+  // ★ Starfield helpers (continuous wrap + parallax)
+  function makeStar(x, y, size, twinkle, baseA=1){
+    return { x, y, s:size, tw:twinkle, a:baseA, seed:Math.random()*1000 };
+  }
+  function initStars(){
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const pad = 40; // overscan so wrapping is invisible
+
+    // Density scales with area; tune for vibe
+    const area = W*H;
+    const nFar  = Math.max(60, Math.floor(area / 18000));
+    const nMid  = Math.max(50, Math.floor(area / 22000));
+    const nNear = Math.max(36, Math.floor(area / 32000));
+
+    state.starsFar.length = 0;
+    state.starsMid.length = 0;
+    state.starsNear.length= 0;
+
+    for (let i=0;i<nFar;i++){
+      state.starsFar.push(makeStar(rand(-pad, W+pad), rand(8, H-8), rand(1,2), rand(0.002,0.004), 0.65));
+    }
+    for (let i=0;i<nMid;i++){
+      state.starsMid.push(makeStar(rand(-pad, W+pad), rand(8, H-8), rand(1.5,2.5), rand(0.0025,0.005), 0.9));
+    }
+    for (let i=0;i<nNear;i++){
+      state.starsNear.push(makeStar(rand(-pad, W+pad), rand(10, H-10), rand(2.2,3.2), rand(0.003,0.006), 1));
+    }
+  }
+
+  // WebAudio: coin-like “satisfying” orb sound
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx){
+      // Lazy create on first user interaction (mobile safe)
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  }
+  function playOrbSound(){
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+
+    const master = audioCtx.createGain();
+    master.gain.value = 0.00001;
+    master.connect(audioCtx.destination);
+
+    // Envelope
+    const env = master.gain;
+    env.exponentialRampToValueAtTime(0.00001, now);
+    env.exponentialRampToValueAtTime(0.25, now + 0.005);
+    env.exponentialRampToValueAtTime(0.0008, now + 0.20);
+
+    // Body: triangle blip with quick upward slide
+    const osc1 = audioCtx.createOscillator();
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(680, now);
+    osc1.frequency.exponentialRampToValueAtTime(1220, now + 0.10);
+    osc1.connect(master);
+    osc1.start(now);
+    osc1.stop(now + 0.22);
+
+    // Sparkle: sine ping
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1800, now + 0.02);
+    osc2.frequency.exponentialRampToValueAtTime(2400, now + 0.08);
+    const g2 = audioCtx.createGain();
+    g2.gain.setValueAtTime(0.00001, now);
+    g2.gain.exponentialRampToValueAtTime(0.15, now + 0.03);
+    g2.gain.exponentialRampToValueAtTime(0.0008, now + 0.16);
+    osc2.connect(g2).connect(master);
+    osc2.start(now + 0.01);
+    osc2.stop(now + 0.18);
+  }
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (!state.playing && !state.dead){
-      unlockAudioOnce();
+      ensureAudio(); // init audio on first interaction
       start();
     } else if (state.dead && !state.deathPause){
-      unlockAudioOnce();
+      ensureAudio();
       restart();
     }
   }
@@ -374,6 +430,8 @@
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
+
+    initStars();
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     updateUI();
@@ -577,6 +635,29 @@
       state.gap   = Math.max(SETTINGS.gapMin, state.gap - SETTINGS.gapShrinkPerMs * dtMs);
     }
 
+    // ★ Parallax starfield motion + wrap (continuous, no reset)
+    {
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      const pad = 40;
+
+      const moveLayer = (arr, factor) => {
+        const vx = (state.speed * factor) * step;
+        for (const s of arr){
+          s.x -= vx;
+          // Tiny vertical shimmer
+          s.y += Math.sin((state.t + s.seed)*s.tw) * 0.03;
+          if (s.x < -pad){
+            s.x += (W + 2*pad);
+            s.y = rand(8, H-8);
+            s.seed = Math.random()*1000;
+          }
+        }
+      };
+      moveLayer(state.starsFar, 0.18);
+      moveLayer(state.starsMid, 0.42);
+      moveLayer(state.starsNear,0.75);
+    }
+
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
@@ -616,8 +697,8 @@
               o.taken = true;
               state.score += 2;
 
-              // SFX: satisfying collect
-              playCollectSfx();
+              // ★ Play satisfying collect sound
+              playOrbSound();
 
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
@@ -701,24 +782,25 @@
       ctx.fillStyle = g2; ctx.fillRect(-2,-2,W+4,H+4);
     }
 
-    // FAR layer
-    ctx.globalAlpha = 0.08;
-    for (let i=0;i<90;i++){
-      const x = (i*120 - (state.t*0.020)%120);
-      const y = 20 + (i*53) % (H-40);
-      ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
-    }
+    // ★ Layered starfield (far → mid → near)
+    const drawStars = (arr, alpha, sizeScale) => {
+      ctx.globalAlpha = alpha;
+      for (const s of arr){
+        const tw = 0.5 + 0.5*Math.sin((state.t* s.tw) + s.seed);
+        const a = s.a * (0.55 + 0.45*tw);
+        ctx.globalAlpha = a * alpha;
+        ctx.fillStyle = (alpha > 0.95 ? "#e7f0ff" : "#bfd2ff");
+        // Use small rects (fast) with slight size variation
+        const w = Math.max(1, s.s * sizeScale);
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), w, w);
+      }
+      ctx.globalAlpha = 1;
+    };
+    drawStars(state.starsFar, 0.18, 1.0);
+    drawStars(state.starsMid, 0.28, 1.15);
+    drawStars(state.starsNear,0.95, 1.25);
 
-    // MID layer
-    ctx.globalAlpha = 0.14;
-    for (let i=0;i<60;i++){
-      const x = (i*200 - (state.t*0.040)%200);
-      const y = 12 + ((i*81) % (H-24)) + Math.sin((state.t*0.00055)+i)*2;
-      ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
-    }
-
-    // GOLDEN FLICKERS
-    ctx.globalAlpha = 1;
+    // GOLDEN FLICKERS (kept for depth sparkle)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i=0;i<28;i++){
