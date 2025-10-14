@@ -234,11 +234,10 @@
     // particles kept for explosions only
     particles:[],
 
-    /* progression palette now: grey → blue → purple → red/orange */
-    trailBase:'#9aa3ad',   // grey
-    trailBlue:'#4ab7ff',   // blue
-    trailPurple:'#b06cff', // purple
-    trailGold:'#ff7a2a',   // red/orange (repurposed)
+    trailBase:'#cfe3ff',
+    trailBlue:'#4ab7ff',
+    trailPurple:'#b06cff',
+    trailGold:'#ffd54a',
 
     startTime:0,
     elapsed:0,
@@ -275,7 +274,6 @@
     const h = canvas.clientHeight, margin = 60;
 
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    thead
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
@@ -368,16 +366,16 @@
 
   /* ----------------------- Trail (FIRE) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;   // red/orange
+    if (score >= 50) return state.trailGold;   // gold
     if (score >= 25) return state.trailPurple; // purple
     if (score >= 10) return state.trailBlue;   // blue
-    return state.trailBase;                    // grey
+    return state.trailBase;                    // base
   }
   function progressionLevel(score){
-    if (score >= 50) return 3; // red/orange
+    if (score >= 50) return 3; // gold
     if (score >= 25) return 2; // purple
     if (score >= 10) return 1; // blue
-    return 0;                  // grey
+    return 0;                  // base
   }
 
   // Create tapered flame elements behind the ghost
@@ -398,7 +396,6 @@
       glow: glows[lvl],
       ang,
       color: colorForScore(state.score),
-      lvl,
       life, maxLife: life,
       seed: Math.random()*1000
     });
@@ -720,82 +717,54 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // FIRE TRAIL behind player (tapered quads with hot core) — flipped so tail extends backward
+    // FIRE TRAIL behind player (tapered quads with hot core)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
-      // choose palette based on progression: grey → blue → purple → red/orange
-      let outerA1, outerA2, coreB1, coreB2, coreB3;
-      if (d.lvl === 0){ // grey
-        outerA1 = `rgba(190,198,208,${0.30*a})`;
-        outerA2 = `rgba(130,140,150,${0.22*a})`;
-        coreB1  = `rgba(255,255,255,${0.80*a})`;
-        coreB2  = `rgba(215,222,232,${0.60*a})`;
-        coreB3  = `rgba(170,178,190,${0.26*a})`;
-      } else if (d.lvl === 1){ // blue
-        outerA1 = `rgba(80,160,255,${0.32*a})`;
-        outerA2 = `rgba(40,120,255,${0.26*a})`;
-        coreB1  = `rgba(255,255,255,${0.85*a})`;
-        coreB2  = `rgba(150,210,255,${0.70*a})`;
-        coreB3  = `rgba(60,140,255,${0.30*a})`;
-      } else if (d.lvl === 2){ // purple
-        outerA1 = `rgba(190,110,255,${0.32*a})`;
-        outerA2 = `rgba(150,70,230,${0.26*a})`;
-        coreB1  = `rgba(255,255,255,${0.85*a})`;
-        coreB2  = `rgba(225,190,255,${0.70*a})`;
-        coreB3  = `rgba(170,100,255,${0.30*a})`;
-      } else { // red/orange
-        outerA1 = `rgba(255,170,60,${0.35*a})`;
-        outerA2 = `rgba(255,130,30,${0.28*a})`;
-        coreB1  = `rgba(255,255,255,${0.85*a})`;
-        coreB2  = `rgba(255,230,120,${0.75*a})`;
-        coreB3  = `rgba(255,170,60,${0.30*a})`;
-      }
-
       ctx.save();
       ctx.translate(d.x, d.y);
       ctx.rotate(d.ang);
 
-      // Outer plume (flipped to +len so it extends backward with angle)
+      // Outer plume (orange -> transparent)
       const len = d.len * (0.7 + 0.3*a);
       const w   = d.w   * (0.6 + 0.4*a);
 
-      const outer = ctx.createLinearGradient(0,0, len,0);
-      outer.addColorStop(0.00, outerA1);
-      outer.addColorStop(0.35, outerA2);
-      outer.addColorStop(1.00, 'rgba(0,0,0,0)');
+      const outer = ctx.createLinearGradient(0,0,-len,0);
+      outer.addColorStop(0.00, `rgba(255,170,60,${0.35*a})`);
+      outer.addColorStop(0.35, `rgba(255,130,30,${0.28*a})`);
+      outer.addColorStop(1.00, 'rgba(255,100,0,0)');
       ctx.fillStyle = outer;
 
       ctx.beginPath();
       ctx.moveTo(0,  w*0.6);
-      ctx.lineTo(len,  w*0.08);
-      ctx.lineTo(len, -w*0.08);
+      ctx.lineTo(-len,  w*0.08);
+      ctx.lineTo(-len, -w*0.08);
       ctx.lineTo(0, -w*0.6);
       ctx.closePath();
       ctx.fill();
 
-      // Inner core (white/hot at head)
+      // Inner core (white/yellow hot)
       const coreLen = len * 0.78;
       const coreW   = w   * 0.55;
-      const core = ctx.createLinearGradient(0,0, coreLen,0);
-      core.addColorStop(0.00, coreB1);
-      core.addColorStop(0.15, coreB2);
-      core.addColorStop(0.55, coreB3);
-      core.addColorStop(1.00, 'rgba(0,0,0,0)');
+      const core = ctx.createLinearGradient(0,0,-coreLen,0);
+      core.addColorStop(0.00, `rgba(255,255,255,${0.85*a})`);
+      core.addColorStop(0.15, `rgba(255,230,120,${0.75*a})`);
+      core.addColorStop(0.55, `rgba(255,170,60,${0.30*a})`);
+      core.addColorStop(1.00, 'rgba(255,140,40,0)');
       ctx.fillStyle = core;
 
       ctx.beginPath();
       ctx.moveTo(0,  coreW*0.55);
-      ctx.lineTo(coreLen,  coreW*0.10);
-      ctx.lineTo(coreLen, -coreW*0.10);
+      ctx.lineTo(-coreLen,  coreW*0.10);
+      ctx.lineTo(-coreLen, -coreW*0.10);
       ctx.lineTo(0, -coreW*0.55);
       ctx.closePath();
       ctx.fill();
 
-      // Head glow (right behind character)
+      // Head glow
       drawGlow(ctx, 0, 0, d.glow * (0.7 + 0.5*a), 0.18*a + 0.06);
 
       ctx.restore();
@@ -824,9 +793,9 @@
       }
     }
 
-    // Orbs (unchanged pulse scaling)
+    // Orbs (pulse scales with progression level too)
     const lvl = progressionLevel(state.score);
-    const orbBase = [36, 42, 48, 58][lvl];
+    const orbBase = [36, 42, 48, 58][lvl];   // bigger with progression
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
 
     for (const o of state.orbs) {
@@ -875,6 +844,7 @@
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
+        // small light dots
         ctx.globalAlpha = a;
         ctx.fillStyle = prt.color;
         ctx.beginPath();
