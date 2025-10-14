@@ -173,6 +173,32 @@
   // orb image (load once)
   const orbImg = makeImg('assets/star.png');
 
+  /* ----------------------- Audio (orb collect) ----------------------- */
+  // Place a short file at assets/sfx_collect.mp3 (or .wav / .ogg); this will be unlocked on first input.
+  const sfxCollect = new Audio('assets/orbsound.mp3');
+  sfxCollect.preload = 'auto';
+  sfxCollect.volume = 0.65;
+
+  function playCollectSfx() {
+    // clone for overlap + slight random pitch for juice
+    const a = sfxCollect.cloneNode();
+    a.volume = sfxCollect.volume;
+    a.playbackRate = 0.96 + Math.random()*0.10;
+    a.play().catch(()=>{ /* ignore */ });
+  }
+
+  // Attempt an early unlock on first user gesture (called in startIfNeeded/start)
+  let audioUnlocked = false;
+  function unlockAudioOnce(){
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    // quick play/pause to satisfy iOS gesture requirement
+    sfxCollect.play().then(() => {
+      sfxCollect.pause();
+      sfxCollect.currentTime = 0;
+    }).catch(()=>{ /* will still work when collecting after gesture */ });
+  }
+
   let PIPE_W = 40;  // exact width used for sleeves
   let BODY_H = 100; // sleeve body tile height
   let CUFF_H = 60;  // cuff height
@@ -250,8 +276,10 @@
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (!state.playing && !state.dead){
+      unlockAudioOnce();
       start();
     } else if (state.dead && !state.deathPause){
+      unlockAudioOnce();
       restart();
     }
   }
@@ -587,6 +615,10 @@
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
               o.taken = true;
               state.score += 2;
+
+              // SFX: satisfying collect
+              playCollectSfx();
+
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
