@@ -646,21 +646,47 @@
         if (hBot>0) ctx.fillRect(x, yBot, 4, 4);
       }
     }
+    
+    // Load orb image
+const orbImg = makeImg('assets/star.png');
 
-    // Orbs
-    for (const o of state.orbs){
-      if (o.taken) continue;
-      const pulse = 1 + 0.18*Math.sin(state.t/120 + o.x*0.02);
-      const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*6*pulse);
-      grd.addColorStop(0, 'rgba(119,234,255,0.35)');
-      grd.addColorStop(1, 'rgba(119,234,255,0)');
-      ctx.fillStyle = grd;
-      ctx.beginPath(); ctx.arc(o.x, o.y, o.r*6*pulse, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(o.x, o.y, o.r*pulse, 0, Math.PI*2);
-      ctx.fillStyle = "#77eaff"; ctx.fill();
-      ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
-    }
+// Orbs
+for (const o of state.orbs) {
+  if (o.taken) continue;
 
+  const pulse = 1 + 0.18 * Math.sin(state.t / 120 + o.x * 0.02);
+
+  // Draw pulsing glow behind the star
+  const glowRadius = o.r * 6 * pulse;
+  const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, glowRadius);
+  grd.addColorStop(0, 'rgba(119,234,255,0.25)');
+  grd.addColorStop(1, 'rgba(119,234,255,0)');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw the star image (64x64)
+  if (orbImg && orbImg.complete && !orbImg._error) {
+    const baseSize = 64; // star.png natural size
+    const drawSize = baseSize * pulse * 0.8; // gentle pulsing scale
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.rotate(Math.sin(state.t / 500 + o.x * 0.03) * 0.15); // small twinkle rotation
+    ctx.drawImage(orbImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+    ctx.restore();
+  } else {
+    // Fallback simple orb if image missing
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.r * pulse, 0, Math.PI * 2);
+    ctx.fillStyle = "#77eaff";
+    ctx.fill();
+    ctx.strokeStyle = "#c8f3ff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+   
     // Particles
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
