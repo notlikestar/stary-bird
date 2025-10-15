@@ -192,6 +192,7 @@
   let PIPE_W = 40;  // exact width used for sleeves
   let BODY_H = 100; // sleeve body tile height
   let CUFF_H = 60;  // cuff height
+  let PIPE_SCALE = 0.85; // ← make sleeves a bit smaller
 
   sleeveBodyImg.onload = () => {
     if (sleeveBodyImg.naturalWidth) {
@@ -205,8 +206,8 @@
       CUFF_H = img.naturalHeight;
       for (const pp of state.pipes) {
         const cx = pp.x + pp.w/2;
-        pp.w = PIPE_W;
-        pp.x = Math.round(cx - PIPE_W/2);
+        pp.w = Math.round(PIPE_W * PIPE_SCALE);
+        pp.x = Math.round(cx - pp.w/2);
       }
     }
   }
@@ -228,7 +229,7 @@
     gapShrinkPerMs: 0.0035,
     maxSlopePxPerSec: 240,
     movingProb: 0.14,
-    doubleProb: 0.10,
+    doubleProb: 0.00,            // ← remove double sleeves
     doubleSpacing: 130,
     movingAmpMax: 24,
     respawnDelayMs: 1000
@@ -306,10 +307,10 @@
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
 
-    const w = PIPE_W;
+    const w = Math.round(PIPE_W * PIPE_SCALE); // ← thinner sleeves
 
     const isMoving = Math.random() < SETTINGS.movingProb;
-    const isDouble = !isMoving && Math.random() < SETTINGS.doubleProb;
+    const isDouble = false; // SETTINGS.doubleProb is 0, but be explicit
 
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
@@ -475,12 +476,11 @@
 
     const tileW = PIPE_W;
     x = Math.round(x); yTop = Math.round(yTop);
-    if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
 
     const cuffDrawH = Math.min(CUFF_H, hTop);
     const cuffSrcY  = CUFF_H - cuffDrawH;
     const cuffDestY = yTop + hTop - cuffDrawH;
-    ctx.drawImage(sleeveCuffTop, 0, cuffSrcY, tileW, cuffDrawH, x, cuffDestY, tileW, cuffDrawH);
+    ctx.drawImage(sleeveCuffTop, 0, cuffSrcY, tileW, cuffDrawH, x, cuffDestY, w, cuffDrawH);
 
     let remaining = hTop - cuffDrawH;
     let y = cuffDestY;
@@ -489,7 +489,7 @@
       ctx.drawImage(
         sleeveBodyImg,
         0, BODY_H - sliceH, tileW, sliceH,
-        x, y - sliceH, tileW, sliceH
+        x, y - sliceH, w, sliceH
       );
       y -= sliceH;
       remaining -= sliceH;
@@ -503,10 +503,9 @@
 
     const tileW = PIPE_W;
     x = Math.round(x); yBot = Math.round(yBot);
-    if (w !== tileW) { x += (w - tileW)/2; w = tileW; }
 
     const cuffDrawH = Math.min(CUFF_H, hBot);
-    ctx.drawImage(sleeveCuffBottom, 0, 0, tileW, cuffDrawH, x, yBot, tileW, cuffDrawH);
+    ctx.drawImage(sleeveCuffBottom, 0, 0, tileW, cuffDrawH, x, yBot, w, cuffDrawH);
 
     let remaining = hBot - cuffDrawH;
     let y = yBot + cuffDrawH;
@@ -515,7 +514,7 @@
       ctx.drawImage(
         sleeveBodyImg,
         0, 0, tileW, sliceH,
-        x, y, tileW, sliceH
+        x, y, w, sliceH
       );
       y += sliceH;
       remaining -= sliceH;
