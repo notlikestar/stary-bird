@@ -47,7 +47,6 @@
     background:rgba(255,255,255,.08);
     padding:6px 10px; border-radius:10px;
     font-weight:800; letter-spacing:.06em; z-index:3;
-    display:flex; align-items:center; gap:8px;
   }
   .controls{
     position:absolute;
@@ -138,8 +137,12 @@
     const vv = window.visualViewport;
     let w = Math.floor(vv ? vv.width  : window.innerWidth);
     let h = Math.floor(vv ? vv.height : window.innerHeight);
+
+    /* If device is held in portrait, pretend the canvas' logical size is landscape
+       (we rotate the stage in CSS), so swap w/h here. */
     if (h > w) { const tmp = w; w = h; h = tmp; }
 
+    // Overscan by 2px and offset by -1px to hide 1px seams on mobile Safari when shaking/transforming.
     canvas.style.left  = '-1px';
     canvas.style.top   = '-1px';
     canvas.style.width  = (w + 2) + 'px';
@@ -178,17 +181,17 @@
   }
   const ghostImg = makeImg('assets/ghost.png');
 
-  // sleeve assets
+  // sleeve assets (exact sizes: body 40x100, cuffs 40x60)
   const sleeveBodyImg   = makeImg('assets/sleevebody.png');       // 40x100
-  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60
-  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60
+  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60 (faces down)
+  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60 (faces up)
 
-  // orb image (also used for coin icon)
+  // orb image (load once)
   const orbImg = makeImg('assets/star.png');
 
-  let PIPE_W = 40;
-  let BODY_H = 100;
-  let CUFF_H = 60;
+  let PIPE_W = 40;  // exact width used for sleeves
+  let BODY_H = 100; // sleeve body tile height
+  let CUFF_H = 60;  // cuff height
 
   sleeveBodyImg.onload = () => {
     if (sleeveBodyImg.naturalWidth) {
@@ -247,19 +250,16 @@
     // particles kept for explosions only
     particles:[],
 
-    // Trail color progression
-    trailBase:'#9aa0a6',
-    trailBlue:'#4ab7ff',
-    trailPurple:'#b06cff',
-    trailGold:'#ff6a00',
+    // Trail color progression (grey → blue → purple → red/orange)
+    trailBase:'#9aa0a6',    // grey
+    trailBlue:'#4ab7ff',    // blue
+    trailPurple:'#b06cff',  // purple
+    trailGold:'#ff6a00',    // red/orange
 
     startTime:0,
     elapsed:0,
     deathPause:false,
-    deathTimer:0,
-
-    // === NEW: persistent coin counter ===
-    coins: Number(localStorage.getItem('stary_bird_coins') || 0)
+    deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -291,8 +291,8 @@
     const h = canvas.clientHeight, margin = 60;
 
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
-    the_base_max = state.maxSpawnFrames * (4.2/state.speed);
-    state.spawn = Math.floor(rand(baseMin, the_base_max));
+    const baseMax = state.maxSpawnFrames * (4.2/state.speed);
+    state.spawn = Math.floor(rand(baseMin, baseMax));
     const timeToNext = state.spawn * (16.67 / 1000);
 
     const mid = h/2;
@@ -378,35 +378,41 @@
   function restart(){ reset(); start(); }
 
   function updateUI(){
-    // HUD is fully updated each frame in draw()
+    // no-op for now
   }
 
   /* ----------------------- Trail (SIMPLE BURST) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;
-    if (score >= 25) return state.trailPurple;
-    if (score >= 10) return state.trailBlue;
-    return state.trailBase;
+    if (score >= 50) return state.trailGold;   // red/orange
+    if (score >= 25) return state.trailPurple; // purple
+    if (score >= 10) return state.trailBlue;   // blue
+    return state.trailBase;                    // grey
   }
   function progressionLevel(score){
-    if (score >= 50) return 3;
-    if (score >= 25) return 2;
-    if (score >= 10) return 1;
-    return 0;
+    if (score >= 50) return 3; // red/orange
+    if (score >= 25) return 2; // purple
+    if (score >= 10) return 1; // blue
+    return 0;                  // grey
   }
 
+  // Create a compact radial burst behind the ghost (expands + fades)
   function addTrail(){
     const lvl = progressionLevel(state.score);
-    const baseR   = [4, 6,8,10][lvl];
-    const maxR    = [18,20,22,23][lvl];
-    const glows   = [14,18,22,23][lvl];
+    const baseR   = [4, 6,8,10][lvl];   // start radius
+    const maxR    = [18,20,22,23][lvl];  // end radius
+    const glows   = [14,18,22,23][lvl];  // ↑ stronger glow per level
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
       x: p.x - 10, y: p.y + Math.random()*2-1,
-      w: baseR, len: maxR, glow: glows,
-      ang: 0, color: colorForScore(state.score),
-      life, maxLife: life, seed: Math.random()*1000, lvl
+      w: baseR,
+      len: maxR,
+      glow: glows,
+      ang: 0,
+      color: colorForScore(state.score),
+      life, maxLife: life,
+      seed: Math.random()*1000,
+      lvl
     });
 
     if (state.trailDots.length > 120) state.trailDots.splice(0, state.trailDots.length - 120);
@@ -517,8 +523,8 @@
   }
 
   /* ==================== Fixed 60 FPS Update ==================== */
-  const FIXED_DT = 1000/60;
-  const MAX_STEPS = 5;
+  const FIXED_DT = 1000/60;     // ~16.6667ms
+  const MAX_STEPS = 5;          // cap to avoid spiral of death
   let lastTime = performance.now();
   let accumulator = 0;
 
@@ -529,6 +535,7 @@
     if (state.deathPause){
       state.deathTimer -= dtMs;
 
+      // decay bursts & particles during pause too
       for (const d of state.trailDots) { d.life -= step; }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
@@ -594,13 +601,7 @@
             const dx = p.x - o.x, dy = p.y - o.y;
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
               o.taken = true;
-
-              // Score +2 and Coins +1 per orb
               state.score += 2;
-              state.coins += 1;
-              try { localStorage.setItem('stary_bird_coins', String(state.coins)); } catch(e){}
-
-              // Spark burst
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
@@ -659,15 +660,15 @@
   }
 
   function draw(){
-    // clear with overscan safety
+    // clear with overscan safety (cover any subpixel transforms)
     ctx.clearRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
 
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
-    /* ===== Depthy background with golden flickers (constant) ===== */
+    /* ===== Depthy background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
-    const tbg = performance.now();
+    const tbg = performance.now(); // <— monotonic timer so starfield never resets
 
     // Nebula washes
     {
@@ -732,29 +733,34 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // Trail
+    // SIMPLE BURST trail (expanding circles with level-scaled glow)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
-      const lvlScale = 1 + (d.lvl||0) * 0.45;
+      const lvlScale = 1 + (d.lvl||0) * 0.45;   // ↑ alpha & glow by level
+
+      // radius progresses from d.w -> d.len
       const t = 1 - a;
       const r = d.w + (d.len - d.w) * t;
 
+      // soft colored ring
       ctx.globalAlpha = 0.22 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r, 0, Math.PI*2);
       ctx.fillStyle = d.color;
       ctx.fill();
 
+      // subtle inner core
       ctx.globalAlpha = 0.35 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fill();
 
+      // head glow (radius & alpha scale with level)
       drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + (d.lvl||0)*0.45), (0.18*a + 0.06) * lvlScale);
       ctx.globalAlpha = 1;
     }
@@ -782,9 +788,9 @@
       }
     }
 
-    // Orbs
+    // Orbs (pulse scales with progression level too)
     const lvl = progressionLevel(state.score);
-    const orbBase = [36, 42, 48, 58][lvl];
+    const orbBase = [36, 42, 48, 58][lvl];   // bigger with progression
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
 
     for (const o of state.orbs) {
@@ -819,7 +825,7 @@
       }
     }
 
-    // Explosion particles
+    // Explosion particles (only when you die / collect)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
@@ -833,6 +839,7 @@
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
       } else {
+        // small light dots
         ctx.globalAlpha = a;
         ctx.fillStyle = prt.color;
         ctx.beginPath();
@@ -872,11 +879,7 @@
       ctx.fillRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
     }
 
-    // === HUD: score • HI • coin icon + count (uses same star.png) ===
-    hud.innerHTML =
-      `${state.score} • HI ${state.hi}` +
-      `&nbsp;&nbsp;<img src="assets/star.png" alt="coin" style="width:16px;height:16px;image-rendering:pixelated;vertical-align:-2px;">` +
-      `&nbsp;${state.coins}`;
+    hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
   function loop(now){
