@@ -238,7 +238,7 @@
     trailBase:'#9aa0a6',    // grey
     trailBlue:'#4ab7ff',    // blue
     trailPurple:'#b06cff',  // purple
-    trailGold:'#ff6a00',    // red/orange (kept key for reuse)
+    trailGold:'#ff6a00',    // red/orange
 
     startTime:0,
     elapsed:0,
@@ -384,18 +384,19 @@
     const lvl = progressionLevel(state.score);
     const baseR   = [6, 8,10,12][lvl];   // start radius
     const maxR    = [18,22,26,30][lvl];  // end radius
-    const glows   = [10,12,14,16][lvl];  // head glow size
+    const glows   = [14,20,28,40][lvl];  // ↑ stronger glow per level
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
       x: p.x - 10, y: p.y + rand(-1.2,1.2),
-      w: baseR,        // start radius
-      len: maxR,       // end radius (reuse existing key)
-      glow: glows[lvl],
-      ang: 0,          // unused in burst, kept for structure
+      w: baseR,
+      len: maxR,
+      glow: glows,
+      ang: 0,
       color: colorForScore(state.score),
       life, maxLife: life,
-      seed: Math.random()*1000
+      seed: Math.random()*1000,
+      lvl
     });
 
     if (state.trailDots.length > 120) state.trailDots.splice(0, state.trailDots.length - 120);
@@ -604,10 +605,10 @@
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
-      // SIMPLE BURST trail: advect backward & fade
+      // SIMPLE BURST trail: advect & fade
       for (const d of state.trailDots){
-        d.x -= state.speed * step * 0.9;                           // push back with world
-        d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);         // tiny float
+        d.x -= state.speed * step * 0.9;
+        d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);
         d.life -= step;
       }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
@@ -715,33 +716,35 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // SIMPLE BURST trail (expanding circles with glow)
+    // SIMPLE BURST trail (expanding circles with level-scaled glow)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
+      const lvlScale = 1 + (d.lvl||0) * 0.45;   // ↑ alpha & glow by level
+
       // radius progresses from d.w -> d.len
       const t = 1 - a;
       const r = d.w + (d.len - d.w) * t;
 
       // soft colored ring
-      ctx.globalAlpha = 0.22 * a;
+      ctx.globalAlpha = 0.22 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r, 0, Math.PI*2);
       ctx.fillStyle = d.color;
       ctx.fill();
 
       // subtle inner core
-      ctx.globalAlpha = 0.35 * a;
+      ctx.globalAlpha = 0.35 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fill();
 
-      // head glow
-      drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a), 0.18*a + 0.06);
+      // head glow (radius & alpha scale with level)
+      drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + (d.lvl||0)*0.45), (0.18*a + 0.06) * lvlScale);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
