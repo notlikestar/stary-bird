@@ -383,8 +383,8 @@
   function addTrail(){
     const lvl = progressionLevel(state.score);
     const baseR   = [6, 8,10,12][lvl];   // start radius
-    const maxR    = [18,22,26,30][lvl];  // end radius
-    const glows   = [14,20,28,40][lvl];  // ↑ stronger glow per level
+    const maxR    = [18,20,23,25][lvl];  // end radius
+    const glows   = [14,18,22,25][lvl];  // ↑ stronger glow per level
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
