@@ -228,16 +228,17 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
-    // FIRE trail elements
+    // TRAIL (simple bursts)
     trailDots:[],
 
     // particles kept for explosions only
     particles:[],
 
-    trailBase:'#cfe3ff',
-    trailBlue:'#4ab7ff',
-    trailPurple:'#b06cff',
-    trailGold:'#ffd54a',
+    // Trail color progression (grey → blue → purple → red/orange)
+    trailBase:'#9aa0a6',    // grey
+    trailBlue:'#4ab7ff',    // blue
+    trailPurple:'#b06cff',  // purple
+    trailGold:'#ff6a00',    // red/orange (kept key for reuse)
 
     startTime:0,
     elapsed:0,
@@ -364,37 +365,34 @@
     // no-op for now
   }
 
-  /* ----------------------- Trail (FIRE) ----------------------- */
+  /* ----------------------- Trail (SIMPLE BURST) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;   // gold
+    if (score >= 50) return state.trailGold;   // red/orange
     if (score >= 25) return state.trailPurple; // purple
     if (score >= 10) return state.trailBlue;   // blue
-    return state.trailBase;                    // base
+    return state.trailBase;                    // grey
   }
   function progressionLevel(score){
-    if (score >= 50) return 3; // gold
+    if (score >= 50) return 3; // red/orange
     if (score >= 25) return 2; // purple
     if (score >= 10) return 1; // blue
-    return 0;                  // base
+    return 0;                  // grey
   }
 
-  // Create tapered flame elements behind the ghost
+  // Create a compact radial burst behind the ghost (expands + fades)
   function addTrail(){
     const lvl = progressionLevel(state.score);
-    const lengths = [26, 34, 44, 58];   // flame length grows with progression
-    const widths  = [6,  8, 10, 12];    // head width grows too
-    const glows   = [14, 18, 22, 28];   // hotter glow
+    const baseR   = [6, 8,10,12][lvl];   // start radius
+    const maxR    = [18,22,26,30][lvl];  // end radius
+    const glows   = [10,12,14,16][lvl];  // head glow size
+    const life    = 16 + Math.random()*6;
 
-    // direction points mostly left, slightly influenced by vertical velocity
-    const ang = Math.atan2(p.vy * 0.25, -state.speed * 1.2) + rand(-0.12, 0.12);
-
-    const life = 22 + Math.random()*8;
     state.trailDots.push({
-      x: p.x - 12, y: p.y + rand(-1.5,1.5),
-      len: lengths[lvl] * (0.9 + Math.random()*0.2),
-      w: widths[lvl]  * (0.9 + Math.random()*0.2),
+      x: p.x - 10, y: p.y + rand(-1.2,1.2),
+      w: baseR,        // start radius
+      len: maxR,       // end radius (reuse existing key)
       glow: glows[lvl],
-      ang,
+      ang: 0,          // unused in burst, kept for structure
       color: colorForScore(state.score),
       life, maxLife: life,
       seed: Math.random()*1000
@@ -520,7 +518,7 @@
     if (state.deathPause){
       state.deathTimer -= dtMs;
 
-      // decay fire & particles during pause too
+      // decay bursts & particles during pause too
       for (const d of state.trailDots) { d.life -= step; }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
@@ -606,10 +604,10 @@
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
 
-      // FIRE trail advects backward & fades
+      // SIMPLE BURST trail: advect backward & fade
       for (const d of state.trailDots){
         d.x -= state.speed * step * 0.9;                           // push back with world
-        d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);         // subtle flicker
+        d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);         // tiny float
         d.life -= step;
       }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
@@ -717,57 +715,34 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // FIRE TRAIL behind player (tapered quads with hot core)
+    // SIMPLE BURST trail (expanding circles with glow)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
-      ctx.save();
-      ctx.translate(d.x, d.y);
-      ctx.rotate(d.ang);
+      // radius progresses from d.w -> d.len
+      const t = 1 - a;
+      const r = d.w + (d.len - d.w) * t;
 
-      // Outer plume (orange -> transparent)
-      const len = d.len * (0.7 + 0.3*a);
-      const w   = d.w   * (0.6 + 0.4*a);
-
-      const outer = ctx.createLinearGradient(0,0,-len,0);
-      outer.addColorStop(0.00, `rgba(255,170,60,${0.35*a})`);
-      outer.addColorStop(0.35, `rgba(255,130,30,${0.28*a})`);
-      outer.addColorStop(1.00, 'rgba(255,100,0,0)');
-      ctx.fillStyle = outer;
-
+      // soft colored ring
+      ctx.globalAlpha = 0.22 * a;
       ctx.beginPath();
-      ctx.moveTo(0,  w*0.6);
-      ctx.lineTo(-len,  w*0.08);
-      ctx.lineTo(-len, -w*0.08);
-      ctx.lineTo(0, -w*0.6);
-      ctx.closePath();
+      ctx.arc(d.x, d.y, r, 0, Math.PI*2);
+      ctx.fillStyle = d.color;
       ctx.fill();
 
-      // Inner core (white/yellow hot)
-      const coreLen = len * 0.78;
-      const coreW   = w   * 0.55;
-      const core = ctx.createLinearGradient(0,0,-coreLen,0);
-      core.addColorStop(0.00, `rgba(255,255,255,${0.85*a})`);
-      core.addColorStop(0.15, `rgba(255,230,120,${0.75*a})`);
-      core.addColorStop(0.55, `rgba(255,170,60,${0.30*a})`);
-      core.addColorStop(1.00, 'rgba(255,140,40,0)');
-      ctx.fillStyle = core;
-
+      // subtle inner core
+      ctx.globalAlpha = 0.35 * a;
       ctx.beginPath();
-      ctx.moveTo(0,  coreW*0.55);
-      ctx.lineTo(-coreLen,  coreW*0.10);
-      ctx.lineTo(-coreLen, -coreW*0.10);
-      ctx.lineTo(0, -coreW*0.55);
-      ctx.closePath();
+      ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fill();
 
-      // Head glow
-      drawGlow(ctx, 0, 0, d.glow * (0.7 + 0.5*a), 0.18*a + 0.06);
-
-      ctx.restore();
+      // head glow
+      drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a), 0.18*a + 0.06);
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
 
