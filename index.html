@@ -398,9 +398,9 @@
   // Create a compact radial burst behind the ghost (expands + fades)
   function addTrail(){
     const lvl = progressionLevel(state.score);
-    const baseR   = [6, 8,10,12][lvl];   // start radius
-    const maxR    = [18,20,23,25][lvl];  // end radius
-    const glows   = [14,18,22,25][lvl];  // ↑ stronger glow per level
+    const baseR   = [4, 6,8,10][lvl];   // start radius
+    const maxR    = [18,20,22,23][lvl];  // end radius
+    const glows   = [14,18,22,23][lvl];  // ↑ stronger glow per level
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
