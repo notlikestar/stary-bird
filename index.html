@@ -28,6 +28,18 @@
            background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none;
            will-change: transform; backface-visibility: hidden; }
 
+  /* Force landscape presentation when the device is held in portrait */
+  @media (orientation: portrait) {
+    .stage{
+      width:100vh;
+      height:100vw;
+      transform-origin: 0 0;
+      /* translate first (in unrotated coords), then rotate 90deg */
+      transform: translateY(-100vw) rotate(90deg);
+    }
+    /* HUD / controls already positioned absolutely on the stage, so they rotate with it */
+  }
+
   .hud{
     position:absolute;
     right:calc(12px + env(safe-area-inset-right));
@@ -123,8 +135,12 @@
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
-    const w = Math.floor(vv ? vv.width  : window.innerWidth);
-    const h = Math.floor(vv ? vv.height : window.innerHeight);
+    let w = Math.floor(vv ? vv.width  : window.innerWidth);
+    let h = Math.floor(vv ? vv.height : window.innerHeight);
+
+    /* If device is held in portrait, pretend the canvas' logical size is landscape
+       (we rotate the stage in CSS), so swap w/h here. */
+    if (h > w) { const tmp = w; w = h; h = tmp; }
 
     // Overscan by 2px and offset by -1px to hide 1px seams on mobile Safari when shaking/transforming.
     canvas.style.left  = '-1px';
@@ -388,7 +404,7 @@
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
-      x: p.x - 10, y: p.y + rand(-1.2,1.2),
+      x: p.x - 10, y: p.y + Math.random()*2-1,
       w: baseR,
       len: maxR,
       glow: glows,
