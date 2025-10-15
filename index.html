@@ -1,4 +1,5 @@
 <!doctype html>
+
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -9,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
 <!-- App icon (mobile & browsers) -->
+
 <link rel="apple-touch-icon" sizes="512x512" href="assets/gameicon.png">
 <link rel="icon" type="image/png" sizes="512x512" href="assets/gameicon.png">
 
@@ -68,6 +70,7 @@
   }
   .toast.show{ opacity:1; }
 </style>
+
 </head>
 <body>
   <div class="stage">
@@ -78,6 +81,7 @@
   </div>
 
   <!-- Toast container -->
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -227,9 +231,9 @@
     accelMain:  0.00060,
     gapMin: 132,
     gapShrinkPerMs: 0.0035,
-    maxSlopePxPerSec: 240,
+    maxSlopePxPerSec: 200,         /* ↓ slightly smoother vertical changes */
     movingProb: 0.14,
-    doubleProb: 0.00,            // ← remove double sleeves
+    doubleProb: 0.00,              // ← remove double sleeves
     doubleSpacing: 130,
     movingAmpMax: 24,
     respawnDelayMs: 1000
@@ -239,10 +243,13 @@
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
-    gravity:0.33, thrust:0.6, maxVy:9,
+    gravity:0.22,                  /* ↓ lower gravity for glide */
+    thrust:0.38,                   /* ↓ softer upward force */
+    maxVy:6.3,                     /* ↓ cap vertical speed for smoother motion */
     speed: SETTINGS.speedBase, gap:150,
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
-    maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
+    maxSlopePxPerFrame:2.0,        /* ↓ less twitchy */
+    lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
     // TRAIL (simple bursts)
@@ -359,7 +366,7 @@
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
     state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.33; state.thrust=0.6;
+    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=0.22; state.thrust=0.38;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
@@ -577,11 +584,16 @@
         }
       }
 
-      p.vy += state.gravity * step;
-      p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
+      // ↓ Softer vertical physics for glide
+      p.vy += state.gravity * step;      // gentle gravity
+      p.vy *= 0.985;                     // light air drag to smooth both up & down
+      p.vy = Math.max(-5.5, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
-      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
-      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
+
+      // ↓ Calmer rotation mapping + softer easing
+      const vyNorm = (p.vy + 5.5) / (5.5 + state.maxVy); // 0..1
+      p.targetRot = -0.45 + vyNorm * (0.35 - (-0.45));
+      p.rot = p.rot + (p.targetRot - p.rot) * 0.12;
 
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
@@ -901,5 +913,6 @@
   requestAnimationFrame(t => { lastTime = t; accumulator = 0; requestAnimationFrame(loop); });
 })();
 </script>
+
 </body>
 </html>
