@@ -668,16 +668,17 @@
 
     /* ===== Depthy background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
+    const tbg = performance.now(); // <— monotonic timer so starfield never resets
 
     // Nebula washes
     {
-      const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(state.t*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
+      const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(tbg*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
       g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
       g1.addColorStop(0.5, 'rgba(40,60,120,0.06)');
       g1.addColorStop(1.0, 'rgba(0,0,0,0)');
       ctx.fillStyle = g1; ctx.fillRect(-2,-2,W+4,H+4);
 
-      const g2 = ctx.createRadialGradient(W*0.85 + Math.cos(state.t*0.00018)*50, H*0.75, 0, W*0.85, H*0.75, Math.max(W,H)*0.8);
+      const g2 = ctx.createRadialGradient(W*0.85 + Math.cos(tbg*0.00018)*50, H*0.75, 0, W*0.85, H*0.75, Math.max(W,H)*0.8);
       g2.addColorStop(0.0, 'rgba(120,60,140,0.08)');
       g2.addColorStop(0.6, 'rgba(50,30,70,0.05)');
       g2.addColorStop(1.0, 'rgba(0,0,0,0)');
@@ -687,7 +688,7 @@
     // FAR layer
     ctx.globalAlpha = 0.08;
     for (let i=0;i<90;i++){
-      const x = (i*120 - (state.t*0.020)%120);
+      const x = (i*120 - (tbg*0.020)%120);
       const y = 20 + (i*53) % (H-40);
       ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
     }
@@ -695,8 +696,8 @@
     // MID layer
     ctx.globalAlpha = 0.14;
     for (let i=0;i<60;i++){
-      const x = (i*200 - (state.t*0.040)%200);
-      const y = 12 + ((i*81) % (H-24)) + Math.sin((state.t*0.00055)+i)*2;
+      const x = (i*200 - (tbg*0.040)%200);
+      const y = 12 + ((i*81) % (H-24)) + Math.sin((tbg*0.00055)+i)*2;
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
 
@@ -705,14 +706,14 @@
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i=0;i<28;i++){
-      const baseX = (i*180 - (state.t*0.050)%180);
+      const baseX = (i*180 - (tbg*0.050)%180);
       const baseY = 30 + ((i*97) % (H-60));
-      const tw = 0.45 + 0.55*(0.5 + 0.5*Math.sin(state.t*0.003 + i*12.9898));
+      const tw = 0.45 + 0.55*(0.5 + 0.5*Math.sin(tbg*0.003 + i*12.9898));
       const a  = 0.08 + 0.28*(tw*tw);
       ctx.globalAlpha = a;
       ctx.fillStyle = "#ffd65a";
       ctx.beginPath();
-      ctx.arc(baseX, baseY + Math.sin(i*3.1 + state.t*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2);
+      ctx.arc(baseX, baseY + Math.sin(i*3.1 + tbg*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2);
       ctx.fill();
       drawGlow(ctx, baseX, baseY, 4 + tw*2.5, 0.12*a + 0.04);
     }
