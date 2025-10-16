@@ -183,22 +183,24 @@
   const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60 (faces down)
   const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60 (faces up)
 
-  // orb image (load once)
+  // orb image
   const orbImg = makeImg('assets/star.png');
 
   // NEW: dryer asset
   const dryerImg = makeImg('assets/dryer.png');
 
-  let PIPE_W = 40;  // exact width used for sleeves
+  let PIPE_W = 40;  // sleeve width (source)
   let BODY_H = 100; // sleeve body tile height
   let CUFF_H = 60;  // cuff height
-  let PIPE_SCALE = 0.85; // ← make sleeves a bit smaller
+  let PIPE_SCALE = 0.85; // sleeves a bit smaller
 
-  // Dryer draw/physics scale (you can tweak these to match your sprite)
+  // Dryer draw/physics scale
   let DRYER_W = 120;
   let DRYER_H = 100;
-  let DRYER_SCALE = 0.85;  // overall scale applied to the image when drawing
-  let DRYER_HIT_INSET = 0.15; // shrink hitbox by 15% border to feel fair
+  let DRYER_SCALE = 0.85;      // overall image scale
+  let DRYER_HIT_INSET = 0.15;  // shrink hitbox by 15% border
+  const DRYER_MIN_GAP_PX = 260;// ensure one-at-a-time spacing on screen edge
+  const DRYER_EXTRA_SPEED = 0.8; // slight rush toward player
 
   dryerImg.onload = () => {
     if (dryerImg.naturalWidth && dryerImg.naturalHeight){
@@ -243,7 +245,7 @@
     gapShrinkPerMs: 0.0035,
     maxSlopePxPerSec: 240,
     movingProb: 0.14,
-    doubleProb: 0.00,            // ← remove double sleeves
+    doubleProb: 0.00,
     doubleSpacing: 130,
     movingAmpMax: 24,
     respawnDelayMs: 1000
@@ -259,26 +261,18 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
-    // NEW: dryers stream + section manager
+    // NEW: dryers + section manager
     dryers:[],
-    section: { mode: 'pipes', remaining: randi(5,10) }, // starts with 5–10 pipes
+    section: { mode: 'pipes', remaining: randi(5,10) }, // 5–10 pipes, then 5–10 dryers, etc.
 
-    // TRAIL (simple bursts)
+    // trail + particles
     trailDots:[],
-
-    // particles kept for explosions only
     particles:[],
 
-    // Trail color progression (grey → blue → purple → red/orange)
-    trailBase:'#9aa0a6',    // grey
-    trailBlue:'#4ab7ff',    // blue
-    trailPurple:'#b06cff',  // purple
-    trailGold:'#ff6a00',    // red/orange
+    // Trail color progression
+    trailBase:'#9aa0a6', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ff6a00',
 
-    startTime:0,
-    elapsed:0,
-    deathPause:false,
-    deathTimer:0
+    startTime:0, elapsed:0, deathPause:false, deathTimer:0
   };
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
@@ -307,7 +301,7 @@
 
   /* ----------------------- Obstacles ----------------------- */
 
-  // Existing: add a sleeve "pipe"
+  // Pipes (sleeves)
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
 
@@ -328,7 +322,7 @@
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
 
-    const w = Math.round(PIPE_W * PIPE_SCALE); // ← thinner sleeves
+    const w = Math.round(PIPE_W * PIPE_SCALE);
 
     const isMoving = Math.random() < SETTINGS.movingProb;
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
@@ -336,12 +330,9 @@
 
     state.pipes.push({
       x: canvas.clientWidth + 40,
-      baseGapY: gapY,
-      w,
-      passed:false,
+      baseGapY: gapY, w, passed:false,
       type: isMoving ? 'moving' : 'normal',
-      amp,
-      speed: isMoving ? rand(0.8, 1.2) : 0,
+      amp, speed: isMoving ? rand(0.8, 1.2) : 0,
       phase: Math.random()*Math.PI*2,
       doubleGap:false
     });
@@ -354,30 +345,34 @@
     }
   }
 
-  // NEW: add a dryer obstacle (solid rectangle you must dodge)
+  // Dryers (one-at-a-time, different heights, from right -> left)
   function addDryer(){
     const H = canvas.clientHeight;
     const margin = 40;
+
+    // Enforce "one at a time": if a dryer is still near the right edge, delay spawn.
+    const last = state.dryers[state.dryers.length - 1];
+    if (last && last.x > canvas.clientWidth - DRYER_MIN_GAP_PX){
+      state.spawn = 8; // short delay, re-check soon
+      return;
+    }
+
     const y = clamp(rand(margin, H - margin - DRYER_H), margin, H - margin - DRYER_H);
 
-    // Spawn pacing similar to pipes but slightly tighter so it feels like a "barrage"
-    const baseMin = (state.minSpawnFrames * 0.88) * (4.2/state.speed);
-    const baseMax = (state.maxSpawnFrames * 0.88) * (4.2/state.speed);
+    // Spawn pacing: a touch tighter than pipes, but single-file
+    const baseMin = (state.minSpawnFrames * 0.92) * (4.2/state.speed);
+    const baseMax = (state.maxSpawnFrames * 0.92) * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
 
     state.dryers.push({
-      x: canvas.clientWidth + 40,
-      y,
-      w: DRYER_W,
-      h: DRYER_H,
+      x: canvas.clientWidth + 40,   // from right edge
+      y, w: DRYER_W, h: DRYER_H,
       passed:false,
-      wobbleAmp: rand(0, 10),        // small vertical bobbing to feel alive
-      wobbleSpeed: rand(0.6, 1.2),
-      wobblePhase: Math.random()*Math.PI*2
+      wobbleAmp: 0, wobbleSpeed: 0, wobblePhase: 0 // keep them straight if you want pure “incoming”
     });
   }
 
-  // NEW: generic section-driven spawner
+  // Section-driven spawner (pipes ↔ dryers)
   function addObstacle(){
     if (state.section.mode === 'pipes'){
       addPipe();
@@ -385,13 +380,14 @@
       addDryer();
     }
 
-    // Count down how many we intended to spawn this section; when done, switch modes
-    state.section.remaining--;
-    if (state.section.remaining <= 0){
-      state.section.mode = (state.section.mode === 'pipes') ? 'dryers' : 'pipes';
-      state.section.remaining = randi(5, 10); // 5–10 in next section
-      // Small toast the first couple of times to make it obvious
-      if (state.score < 10) showToast(state.section.mode.toUpperCase() + '!');
+    // Section countdown/switch
+    if (state.spawn !== 8) { // only count when we actually spawned a dryer, not when we deferred
+      state.section.remaining--;
+      if (state.section.remaining <= 0){
+        state.section.mode = (state.section.mode === 'pipes') ? 'dryers' : 'pipes';
+        state.section.remaining = randi(5, 10);
+        if (state.score < 10) showToast(state.section.mode.toUpperCase() + '!');
+      }
     }
   }
 
@@ -417,7 +413,6 @@
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
-    updateUI();
   }
   function start(){
     if (state.dead || state.deathPause) return;
@@ -425,11 +420,8 @@
     state.startTime = performance.now();
     state.elapsed = 0;
     if (msg) msg.style.display = 'none';
-    updateUI();
   }
   function restart(){ reset(); start(); }
-
-  function updateUI(){ /* no-op */ }
 
   /* ----------------------- Trail (SIMPLE BURST) ----------------------- */
   function colorForScore(score){
@@ -471,7 +463,7 @@
     return false;
   }
 
-  // NEW: AABB hit for dryers (slightly shrunken to be fair)
+  // AABB hit for dryers (slightly shrunken to be fair)
   function hitDryer(d){
     const insetX = d.w * DRYER_HIT_INSET;
     const insetY = d.h * DRYER_HIT_INSET;
@@ -528,7 +520,7 @@
     state.flash = 0.5;
   }
 
-  /* -------- Sleeve rendering (replaces pipes with your assets) -------- */
+  /* -------- Sleeve rendering (your assets) -------- */
   function drawTopPipeSection(ctx, x, yTop, w, hTop) {
     if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffTop) return;
     ctx.imageSmoothingEnabled = false;
@@ -647,10 +639,8 @@
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
       for (const d of state.dryers){
-        d.x -= state.speed * step;
-        if (d.wobbleAmp > 0){
-          d.y += Math.sin(state.t*0.001*d.wobbleSpeed + d.wobblePhase) * 0.3;
-        }
+        d.x -= (state.speed + DRYER_EXTRA_SPEED) * step;  // move toward player
+        // (keep wobble 0 for straight-line “incoming”)
       }
 
       // Pipe scoring/collisions
@@ -698,7 +688,7 @@
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
       while (state.dryers.length && state.dryers[0].x + state.dryers[0].w < -40) state.dryers.shift();
 
-      // SIMPLE BURST trail: advect & fade
+      // Trail decay
       for (const d of state.trailDots){
         d.x -= state.speed * step * 0.9;
         d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);
@@ -743,9 +733,9 @@
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
-    /* ===== Depthy background with golden flickers ===== */
+    /* ===== Background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
-    const tbg = performance.now(); // monotonic timer so starfield never resets
+    const tbg = performance.now();
 
     // Nebula washes
     {
@@ -810,30 +800,25 @@
     /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // SIMPLE BURST trail
+    // Trail (simple burst)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
-      const lvlScale = 1 + (d.lvl||0) * 0.45;
+      const lvl = d.lvl||0;
+      const lvlScale = 1 + lvl * 0.45;
       const t = 1 - a;
       const r = d.w + (d.len - d.w) * t;
 
       ctx.globalAlpha = 0.22 * a * lvlScale;
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, r, 0, Math.PI*2);
-      ctx.fillStyle = d.color;
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, Math.PI*2); ctx.fillStyle = d.color; ctx.fill();
 
       ctx.globalAlpha = 0.35 * a * lvlScale;
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
 
-      drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + (d.lvl||0)*0.45), (0.18*a + 0.06) * lvlScale);
+      drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + lvl*0.45), (0.18*a + 0.06) * lvlScale);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -860,14 +845,13 @@
       }
     }
 
-    /* ----- Draw dryers ----- */
+    /* ----- Draw dryers (from right → left, single-file) ----- */
     for (const d of state.dryers){
       if (dryerImg && dryerImg.complete && !dryerImg._error){
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(dryerImg, Math.round(d.x), Math.round(d.y), d.w, d.h);
       } else {
-        // placeholder box
         ctx.fillStyle = "#444";
         ctx.fillRect(Math.round(d.x), Math.round(d.y), d.w, d.h);
         ctx.strokeStyle = "#888"; ctx.lineWidth = 3;
@@ -876,7 +860,7 @@
     }
 
     // Orbs (unchanged)
-    const lvl = progressionLevel(state.score);
+    const lvl = (state.score>=50?3:state.score>=25?2:state.score>=10?1:0);
     const orbBase = [36, 42, 48, 58][lvl];
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
 
@@ -888,9 +872,7 @@
       grd.addColorStop(0, `rgba(119,234,255,${orbGlow})`);
       grd.addColorStop(1, 'rgba(119,234,255,0)');
       ctx.fillStyle = grd;
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, glowRadius, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(o.x, o.y, glowRadius, 0, Math.PI * 2); ctx.fill();
 
       if (orbImg && orbImg.complete && !orbImg._error) {
         const drawSize = orbBase * pulse * 0.85;
