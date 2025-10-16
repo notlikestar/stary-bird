@@ -28,16 +28,13 @@
            background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none;
            will-change: transform; backface-visibility: hidden; }
 
-  /* Force landscape presentation when the device is held in portrait */
   @media (orientation: portrait) {
     .stage{
       width:100vh;
       height:100vw;
       transform-origin: 0 0;
-      /* translate first (in unrotated coords), then rotate 90deg */
       transform: translateY(-100vw) rotate(90deg);
     }
-    /* HUD / controls already positioned absolutely on the stage, so they rotate with it */
   }
 
   .hud{
@@ -58,7 +55,6 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
     background:#2a1620; color:#ffd5dc; border:1px solid #572238;
@@ -77,17 +73,14 @@
     <div class="center" id="msg">TAP / SPACE TO START</div>
   </div>
 
-  <!-- Toast container -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
   'use strict';
 
-  /* ======= SINGLE SOURCE OF TRUTH FOR GRAVITY ======= */
-  const GRAVITY = 0.33; // ← tweak this (lower = floatier, higher = heavier)
+  const GRAVITY = 0.33;
 
-  /* ===== MOBILE-SAFE GLOW ===== */
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
     const off = document.createElement('canvas');
     off.width = off.height = size;
@@ -117,7 +110,6 @@
     ctx.restore();
   }
 
-  /* ==================== SMALL TOAST ==================== */
   const toastEl = document.getElementById('toast');
   let toastTimer = null;
   function showToast(msg){
@@ -128,24 +120,18 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  /* ==================== CANVAS + UI ==================== */
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
 
-  /* ---------- Robust sizing (+ overscan to kill edge seams) ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
     let w = Math.floor(vv ? vv.width  : window.innerWidth);
     let h = Math.floor(vv ? vv.height : window.innerHeight);
-
-    /* If device is held in portrait, pretend the canvas' logical size is landscape
-       (we rotate the stage in CSS), so swap w/h here. */
     if (h > w) { const tmp = w; w = h; h = tmp; }
 
-    // Overscan by 2px and offset by -1px to hide 1px seams on mobile Safari when shaking/transforming.
     canvas.style.left  = '-1px';
     canvas.style.top   = '-1px';
     canvas.style.width  = (w + 2) + 'px';
@@ -161,7 +147,6 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
   sizeToViewport();
 
-  // Prevent double-tap zoom on iOS
   let lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
     const now = Date.now();
@@ -169,7 +154,6 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Images ----------------------- */
   function makeImg(src) {
     const img = new Image();
     img.decoding = 'async';
@@ -184,18 +168,21 @@
   }
   const ghostImg = makeImg('assets/ghost.png');
 
-  // sleeve assets (exact sizes: body 40x100, cuffs 40x60)
+  // sleeve assets
   const sleeveBodyImg   = makeImg('assets/sleevebody.png');       // 40x100
-  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60 (faces down)
-  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60 (faces up)
+  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60
+  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60
 
-  // orb image (load once)
+  // orb image
   const orbImg = makeImg('assets/star.png');
 
-  let PIPE_W = 40;  // exact width used for sleeves
-  let BODY_H = 100; // sleeve body tile height
-  let CUFF_H = 60;  // cuff height
-  let PIPE_SCALE = 0.85; // ← make sleeves a bit smaller
+  // NEW: dryer asset
+  const dryerImg = makeImg('assets/dryer.png');
+
+  let PIPE_W = 40;
+  let BODY_H = 100;
+  let CUFF_H = 60;
+  let PIPE_SCALE = 0.85;
 
   sleeveBodyImg.onload = () => {
     if (sleeveBodyImg.naturalWidth) {
@@ -217,7 +204,6 @@
   sleeveCuffTop.onload = () => syncCuffDims(sleeveCuffTop);
   sleeveCuffBottom.onload = () => syncCuffDims(sleeveCuffBottom);
 
-  /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
 
@@ -232,13 +218,23 @@
     gapShrinkPerMs: 0.0035,
     maxSlopePxPerSec: 240,
     movingProb: 0.14,
-    doubleProb: 0.00,            // ← remove double sleeves
+    doubleProb: 0.00,
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000
+    respawnDelayMs: 1000,
+
+    // NEW: dryer tuning
+    dryerScale: 0.72,
+    dryerMinSpawnFrames: 95,
+    dryerMaxSpawnFrames: 140,
+    dryerBobAmp: 16,
+    dryerBobSpeedMin: 0.9,
+    dryerBobSpeedMax: 1.6
   };
 
-  /* ----------------------- Game State ----------------------- */
+  // NEW: section switching helpers
+  function nextSectionSize(){ return Math.floor(rand(5, 11)); } // 5–10 inclusive-ish
+
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
@@ -248,17 +244,20 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
-    // TRAIL (simple bursts)
-    trailDots:[],
+    // NEW: dryers & section logic
+    dryers:[],
+    sectionMode:'pipes',         // 'pipes' | 'dryers'
+    sectionSpawned:0,            // how many obstacles spawned in current section
+    sectionTarget: nextSectionSize(), // 5–10
 
-    // particles kept for explosions only
+    // trail/particles unchanged
+    trailDots:[],
     particles:[],
 
-    // Trail color progression (grey → blue → purple → red/orange)
-    trailBase:'#9aa0a6',    // grey
-    trailBlue:'#4ab7ff',    // blue
-    trailPurple:'#b06cff',  // purple
-    trailGold:'#ff6a00',    // red/orange
+    trailBase:'#9aa0a6',
+    trailBlue:'#4ab7ff',
+    trailPurple:'#b06cff',
+    trailGold:'#ff6a00',
 
     startTime:0,
     elapsed:0,
@@ -268,7 +267,6 @@
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
-  /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
     if (!state.playing && !state.dead){
       start();
@@ -290,7 +288,6 @@
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
-  /* ----------------------- World ----------------------- */
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
 
@@ -310,10 +307,9 @@
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
 
-    const w = Math.round(PIPE_W * PIPE_SCALE); // ← thinner sleeves
+    const w = Math.round(PIPE_W * PIPE_SCALE);
 
     const isMoving = Math.random() < SETTINGS.movingProb;
-    const isDouble = false; // SETTINGS.doubleProb is 0, but be explicit
 
     const maxAmpByGap = Math.max(0, (state.gap * 0.5) - 50);
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
@@ -330,24 +326,64 @@
       doubleGap:false
     });
 
-    if (isDouble){
-      state.pipes.push({
-        x: canvas.clientWidth + 40 + w + SETTINGS.doubleSpacing,
-        baseGapY: clamp(gapY + rand(-24, 24), safeTop, safeBot),
-        w,
-        passed:false,
-        type:'normal',
-        amp:0, speed:0, phase:0,
-        doubleGap:true
-      });
-    }
-
     state.lastGapY = gapY;
     state.lastPipeX = canvas.clientWidth + 40;
 
     if (Math.random() < 0.55){
       state.orbs.push({ x: canvas.clientWidth + 40 + w/2, y: gapY, r:8, taken:false, t0: state.t });
     }
+
+    // section counting
+    state.sectionSpawned++;
+    if (state.sectionSpawned >= state.sectionTarget){
+      // swap to dryers next
+      switchTo('dryers');
+    }
+  }
+
+  // NEW: Dryers
+  let DRYER_W = 100, DRYER_H = 100;
+  dryerImg.onload = () => {
+    if (dryerImg.naturalWidth && dryerImg.naturalHeight){
+      DRYER_W = Math.round(dryerImg.naturalWidth * SETTINGS.dryerScale);
+      DRYER_H = Math.round(dryerImg.naturalHeight * SETTINGS.dryerScale);
+    }
+  };
+
+  function addDryer(){
+    const h = canvas.clientHeight;
+    const margin = 50;
+    const baseMin = SETTINGS.dryerMinSpawnFrames * (4.2/state.speed);
+    const baseMax = SETTINGS.dryerMaxSpawnFrames * (4.2/state.speed);
+    state.spawn = Math.floor(rand(baseMin, baseMax));
+
+    const y = clamp(rand(margin, h - margin), margin, h - margin);
+
+    state.dryers.push({
+      x: canvas.clientWidth + 40,
+      y,
+      w: DRYER_W,
+      h: DRYER_H,
+      bobAmp: SETTINGS.dryerBobAmp,
+      bobSpeed: rand(SETTINGS.dryerBobSpeedMin, SETTINGS.dryerBobSpeedMax),
+      bobPhase: Math.random()*Math.PI*2,
+      passed:false
+    });
+
+    // section counting
+    state.sectionSpawned++;
+    if (state.sectionSpawned >= state.sectionTarget){
+      // swap back to pipes
+      switchTo('pipes');
+    }
+  }
+
+  function switchTo(mode){
+    state.sectionMode = mode;               // 'pipes' or 'dryers'
+    state.sectionSpawned = 0;
+    state.sectionTarget = nextSectionSize();
+    // kick a short spawn delay so the section transition breathes
+    state.spawn = Math.floor(rand(40, 80));
   }
 
   const currentGapY = (pipe) => {
@@ -357,15 +393,21 @@
     return pipe.baseGapY;
   };
 
-  /* ----------------------- Flow ----------------------- */
   function reset(){
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
     state.score=0;
     state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
+    state.dryers.length=0;
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
+
+    // start on pipes section
+    state.sectionMode = 'pipes';
+    state.sectionSpawned = 0;
+    state.sectionTarget = nextSectionSize();
+
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
@@ -381,30 +423,26 @@
   }
   function restart(){ reset(); start(); }
 
-  function updateUI(){
-    // no-op for now
-  }
+  function updateUI(){}
 
-  /* ----------------------- Trail (SIMPLE BURST) ----------------------- */
   function colorForScore(score){
-    if (score >= 50) return state.trailGold;   // red/orange
-    if (score >= 25) return state.trailPurple; // purple
-    if (score >= 10) return state.trailBlue;   // blue
-    return state.trailBase;                    // grey
+    if (score >= 50) return state.trailGold;
+    if (score >= 25) return state.trailPurple;
+    if (score >= 10) return state.trailBlue;
+    return state.trailBase;
   }
   function progressionLevel(score){
-    if (score >= 50) return 3; // red/orange
-    if (score >= 25) return 2; // purple
-    if (score >= 10) return 1; // blue
-    return 0;                  // grey
+    if (score >= 50) return 3;
+    if (score >= 25) return 2;
+    if (score >= 10) return 1;
+    return 0;
   }
 
-  // Create a compact radial burst behind the ghost (expands + fades)
   function addTrail(){
     const lvl = progressionLevel(state.score);
-    const baseR   = [4, 6,8,10][lvl];   // start radius
-    const maxR    = [18,20,22,23][lvl];  // end radius
-    const glows   = [14,18,22,23][lvl];  // ↑ stronger glow per level
+    const baseR   = [4,6,8,10][lvl];
+    const maxR    = [18,20,22,23][lvl];
+    const glows   = [14,18,22,23][lvl];
     const life    = 16 + Math.random()*6;
 
     state.trailDots.push({
@@ -418,11 +456,9 @@
       seed: Math.random()*1000,
       lvl
     });
-
     if (state.trailDots.length > 120) state.trailDots.splice(0, state.trailDots.length - 120);
   }
 
-  /* ----------------------- Collisions ----------------------- */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -431,9 +467,20 @@
     }
     return false;
   }
+
+  // NEW: dryer collision (AABB vs player padded circle-ish box)
+  function hitDryer(d){
+    const px = p.x - p.w*0.35, py = p.y - p.h*0.35;
+    const pw = p.w*0.7, ph = p.h*0.7;
+
+    // rendered Y with bob
+    const bob = Math.sin(d.bobPhase + state.t/1000*d.bobSpeed) * d.bobAmp;
+    const dx = d.x, dy = d.y + bob;
+    return !(px > dx + d.w || px + pw < dx || py > dy + d.h || py + ph < dy);
+  }
+
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
     let skinColor = '#cfe3ff';
@@ -471,12 +518,9 @@
     state.flash = 0.5;
   }
 
-  /* -------- Sleeve rendering (replaces pipes with your assets) -------- */
   function drawTopPipeSection(ctx, x, yTop, w, hTop) {
     if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffTop) return;
-
     ctx.imageSmoothingEnabled = false;
-
     const tileW = PIPE_W;
     x = Math.round(x); yTop = Math.round(yTop);
 
@@ -498,10 +542,8 @@
       remaining -= sliceH;
     }
   }
-
   function drawBottomPipeSection(ctx, x, yBot, w, hBot) {
     if (hBot <= 0 || !sleeveBodyImg || !sleeveCuffBottom) return;
-
     ctx.imageSmoothingEnabled = false;
 
     const tileW = PIPE_W;
@@ -524,9 +566,8 @@
     }
   }
 
-  /* ==================== Fixed 60 FPS Update ==================== */
-  const FIXED_DT = 1000/60;     // ~16.6667ms
-  const MAX_STEPS = 5;          // cap to avoid spiral of death
+  const FIXED_DT = 1000/60;
+  const MAX_STEPS = 5;
   let lastTime = performance.now();
   let accumulator = 0;
 
@@ -537,7 +578,6 @@
     if (state.deathPause){
       state.deathTimer -= dtMs;
 
-      // decay bursts & particles during pause too
       for (const d of state.trailDots) { d.life -= step; }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
@@ -569,7 +609,7 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
-      // Magnet-lite toward orbs
+      // magnet-lite to orbs
       for (const o of state.orbs){
         if (o.taken) continue;
         const dx = p.x - o.x, dy = p.y - o.y;
@@ -586,15 +626,32 @@
       p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
       p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
 
+      // Spawning per section
       state.spawn -= step;
-      if (state.spawn <= 0) addPipe();
+      if (state.spawn <= 0){
+        if (state.sectionMode === 'pipes') addPipe();
+        else addDryer();
+      }
+
+      // Move world
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
+      for (const d of state.dryers)  d.x    -= state.speed * step;
 
+      // Score & collisions for pipes
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
+
+      // Collisions for dryers + scoring (count each once when you pass midpoint)
+      if (!state.dead){
+        for (const d of state.dryers){
+          if (!d.passed && p.x > d.x + d.w/2){ d.passed = true; state.score++; }
+          if (hitDryer(d)) { die(); break; }
+        }
+      }
+
       if (!state.dead && hitBounds()) die();
 
       if (!state.dead){
@@ -622,8 +679,8 @@
 
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
+      while (state.dryers.length && state.dryers[0].x + state.dryers[0].w < -40) state.dryers.shift();
 
-      // SIMPLE BURST trail: advect & fade
       for (const d of state.trailDots){
         d.x -= state.speed * step * 0.9;
         d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);
@@ -631,7 +688,6 @@
       }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
-      // explosion particles decay
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -662,17 +718,14 @@
   }
 
   function draw(){
-    // clear with overscan safety (cover any subpixel transforms)
     ctx.clearRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
 
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
-    /* ===== Depthy background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
-    const tbg = performance.now(); // <— monotonic timer so starfield never resets
+    const tbg = performance.now();
 
-    // Nebula washes
     {
       const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(tbg*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
       g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
@@ -687,7 +740,6 @@
       ctx.fillStyle = g2; ctx.fillRect(-2,-2,W+4,H+4);
     }
 
-    // FAR layer
     ctx.globalAlpha = 0.08;
     for (let i=0;i<90;i++){
       const x = (i*120 - (tbg*0.020)%120);
@@ -695,7 +747,6 @@
       ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
     }
 
-    // MID layer
     ctx.globalAlpha = 0.14;
     for (let i=0;i<60;i++){
       const x = (i*200 - (tbg*0.040)%200);
@@ -703,7 +754,6 @@
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
 
-    // GOLDEN FLICKERS
     ctx.globalAlpha = 1;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -721,7 +771,6 @@
     }
     ctx.restore();
 
-    // Vignette
     ctx.globalAlpha = 0.28;
     const vgTop = ctx.createLinearGradient(0,0,0,H);
     vgTop.addColorStop(0,'rgba(0,0,0,0.45)');
@@ -732,43 +781,37 @@
     ctx.fillStyle = vgTop; ctx.fillRect(-2,-2,W+4,H+4);
     ctx.globalAlpha = 1;
 
-    /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // SIMPLE BURST trail (expanding circles with level-scaled glow)
+    // Trail
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
       const a = Math.max(0, d.life / d.maxLife);
       if (a <= 0) continue;
 
-      const lvlScale = 1 + (d.lvl||0) * 0.45;   // ↑ alpha & glow by level
-
-      // radius progresses from d.w -> d.len
+      const lvlScale = 1 + (d.lvl||0) * 0.45;
       const t = 1 - a;
       const r = d.w + (d.len - d.w) * t;
 
-      // soft colored ring
       ctx.globalAlpha = 0.22 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r, 0, Math.PI*2);
       ctx.fillStyle = d.color;
       ctx.fill();
 
-      // subtle inner core
       ctx.globalAlpha = 0.35 * a * lvlScale;
       ctx.beginPath();
       ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fill();
 
-      // head glow (radius & alpha scale with level)
       drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + (d.lvl||0)*0.45), (0.18*a + 0.06) * lvlScale);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
 
-    // Draw sleeves
+    // Sleeves
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -790,16 +833,15 @@
       }
     }
 
-    // Orbs (pulse scales with progression level too)
+    // Orbs
     const lvl = progressionLevel(state.score);
-    const orbBase = [36, 42, 48, 58][lvl];   // bigger with progression
+    const orbBase = [36, 42, 48, 58][lvl];
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
 
     for (const o of state.orbs) {
       if (o.taken) continue;
 
       const pulse = 1 + 0.06 * Math.sin(state.t / 360 + o.x * 0.01);
-
       const glowRadius = o.r * 6 * pulse * (1 + lvl*0.15);
       const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, glowRadius);
       grd.addColorStop(0, `rgba(119,234,255,${orbGlow})`);
@@ -827,31 +869,23 @@
       }
     }
 
-    // Explosion particles (only when you die / collect)
-    for (const prt of state.particles){
-      const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
-      if (a <= 0) continue;
-
-      if (prt.type === 'shard'){
-        ctx.globalAlpha = a;
-        ctx.fillStyle = prt.color;
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
-        ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
-        ctx.restore();
+    // NEW: Dryers
+    for (const d of state.dryers){
+      const drawY = d.y + Math.sin(d.bobPhase + state.t/1000*d.bobSpeed) * d.bobAmp;
+      if (dryerImg && dryerImg.complete && !dryerImg._error){
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(dryerImg, Math.round(d.x), Math.round(drawY), d.w, d.h);
       } else {
-        // small light dots
-        ctx.globalAlpha = a;
-        ctx.fillStyle = prt.color;
-        ctx.beginPath();
-        ctx.arc(prt.x, prt.y, (prt.r||2), 0, Math.PI*2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        // fallback rect
+        ctx.fillStyle = "#7f8ca0";
+        ctx.fillRect(Math.round(d.x), Math.round(drawY), d.w, d.h);
+        ctx.fillStyle = "#cfd7e6";
+        ctx.fillRect(Math.round(d.x)+6, Math.round(drawY)+6, d.w-12, d.h-12);
       }
     }
 
-    // Player (ghost)
+    // Player
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
