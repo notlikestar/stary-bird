@@ -197,10 +197,10 @@
   // Dryer draw/physics scale
   let DRYER_W = 120;
   let DRYER_H = 100;
-  let DRYER_SCALE = 0.85;      // overall image scale
-  let DRYER_HIT_INSET = 0.15;  // shrink hitbox by 15% border
-  const DRYER_MIN_GAP_PX = 260;// ensure one-at-a-time spacing on screen edge
-  const DRYER_EXTRA_SPEED = 0.8; // slight rush toward player
+  let DRYER_SCALE = 0.35;      // ↓ MUCH smaller (was 0.85)
+  let DRYER_HIT_INSET = 0.18;  // fair hitbox
+  const DRYER_MIN_GAP_PX = 260;// spacing helper (still fine)
+  const DRYER_EXTRA_SPEED = 2.2; // ↑ faster push toward player (was 0.8)
 
   dryerImg.onload = () => {
     if (dryerImg.naturalWidth && dryerImg.naturalHeight){
@@ -350,16 +350,23 @@
     const H = canvas.clientHeight;
     const margin = 40;
 
-    // Enforce "one at a time": if a dryer is still near the right edge, delay spawn.
+    // STRICT "only one on screen": if ANY dryer hasn't fully left, defer.
+    const anyVisible = state.dryers.some(d => (d.x + d.w) > -40);
+    if (anyVisible){
+      state.spawn = 6; // quick recheck
+      return;
+    }
+
+    // Also defer if the last one is still right-edge-adjacent (belt-and-suspenders)
     const last = state.dryers[state.dryers.length - 1];
     if (last && last.x > canvas.clientWidth - DRYER_MIN_GAP_PX){
-      state.spawn = 8; // short delay, re-check soon
+      state.spawn = 6;
       return;
     }
 
     const y = clamp(rand(margin, H - margin - DRYER_H), margin, H - margin - DRYER_H);
 
-    // Spawn pacing: a touch tighter than pipes, but single-file
+    // Single-file pacing
     const baseMin = (state.minSpawnFrames * 0.92) * (4.2/state.speed);
     const baseMax = (state.maxSpawnFrames * 0.92) * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
@@ -368,7 +375,7 @@
       x: canvas.clientWidth + 40,   // from right edge
       y, w: DRYER_W, h: DRYER_H,
       passed:false,
-      wobbleAmp: 0, wobbleSpeed: 0, wobblePhase: 0 // keep them straight if you want pure “incoming”
+      wobbleAmp: 0, wobbleSpeed: 0, wobblePhase: 0
     });
   }
 
@@ -381,7 +388,7 @@
     }
 
     // Section countdown/switch
-    if (state.spawn !== 8) { // only count when we actually spawned a dryer, not when we deferred
+    if (state.spawn !== 6) { // don't count if we deferred dryer spawn
       state.section.remaining--;
       if (state.section.remaining <= 0){
         state.section.mode = (state.section.mode === 'pipes') ? 'dryers' : 'pipes';
@@ -639,8 +646,7 @@
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
       for (const d of state.dryers){
-        d.x -= (state.speed + DRYER_EXTRA_SPEED) * step;  // move toward player
-        // (keep wobble 0 for straight-line “incoming”)
+        d.x -= (state.speed + DRYER_EXTRA_SPEED) * step;  // faster toward player
       }
 
       // Pipe scoring/collisions
