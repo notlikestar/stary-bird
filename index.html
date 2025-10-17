@@ -28,14 +28,8 @@
            background:linear-gradient(180deg,#0a1120,#0a0f17 65%, #090d14); touch-action:none;
            will-change: transform; backface-visibility: hidden; }
 
-  /* Force landscape presentation when the device is held in portrait */
   @media (orientation: portrait) {
-    .stage{
-      width:100vh;
-      height:100vw;
-      transform-origin: 0 0;
-      transform: translateY(-100vw) rotate(90deg);
-    }
+    .stage{ width:100vh; height:100vw; transform-origin:0 0; transform:translateY(-100vw) rotate(90deg); }
   }
 
   .hud{
@@ -56,7 +50,6 @@
            pointer-events:none; font-weight:900; letter-spacing:.08em;
            color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
 
-  /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
     background:#2a1620; color:#ffd5dc; border:1px solid #572238;
@@ -74,34 +67,26 @@
     <div class="controls">SPACE / TAP</div>
     <div class="center" id="msg">TAP / SPACE TO START</div>
   </div>
-
-  <!-- Toast container -->
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
   'use strict';
 
-  /* ======= SINGLE SOURCE OF TRUTH FOR GRAVITY ======= */
-  const GRAVITY = 0.33; // ← tweak this (lower = floatier, higher = heavier)
+  const GRAVITY = 0.33;
 
-  /* ===== MOBILE-SAFE GLOW ===== */
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
     const off = document.createElement('canvas');
     off.width = off.height = size;
     const c = off.getContext('2d');
-
     const g = c.createRadialGradient(size/2, size/2, size*0.08, size/2, size/2, size*0.48);
     g.addColorStop(0.00, 'rgba(255,255,255,0.70)');
     g.addColorStop(0.35, `rgba(${tint[0]},${tint[1]},${tint[2]},0.35)`);
     g.addColorStop(0.75, `rgba(${tint[0]},${tint[1]},${tint[2]},0.10)`);
     g.addColorStop(1.00, 'rgba(0,0,0,0)');
-
     c.globalCompositeOperation = 'lighter';
     c.fillStyle = g;
-    c.beginPath();
-    c.arc(size/2, size/2, size*0.48, 0, Math.PI*2);
-    c.fill();
+    c.beginPath(); c.arc(size/2, size/2, size*0.48, 0, Math.PI*2); c.fill();
     return off;
   }
   const glowSprite = makeGlowSprite();
@@ -115,7 +100,6 @@
     ctx.restore();
   }
 
-  /* ==================== SMALL TOAST ==================== */
   const toastEl = document.getElementById('toast');
   let toastTimer = null;
   function showToast(msg){
@@ -126,25 +110,21 @@
     toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  /* ==================== CANVAS + UI ==================== */
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: true });
   const hud = document.getElementById('hud');
   const msg = document.getElementById('msg');
 
-  /* ---------- Robust sizing (+ overscan to kill edge seams) ---------- */
   let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function sizeToViewport() {
     const vv = window.visualViewport;
     let w = Math.floor(vv ? vv.width  : window.innerWidth);
     let h = Math.floor(vv ? vv.height : window.innerHeight);
     if (h > w) { const tmp = w; w = h; h = tmp; }
-
     canvas.style.left  = '-1px';
     canvas.style.top   = '-1px';
     canvas.style.width  = (w + 2) + 'px';
     canvas.style.height = (h + 2) + 'px';
-
     const cw = Math.max(1, Math.floor((w + 2) * DPR));
     const ch = Math.max(1, Math.floor((h + 2) * DPR));
     canvas.width = cw; canvas.height = ch;
@@ -155,7 +135,6 @@
   if (window.visualViewport) window.visualViewport.addEventListener('resize', sizeToViewport, {passive:true});
   sizeToViewport();
 
-  // Prevent double-tap zoom on iOS
   let lastTouchEnd = 0;
   document.addEventListener('touchend', e => {
     const now = Date.now();
@@ -163,7 +142,6 @@
     lastTouchEnd = now;
   }, {passive:false});
 
-  /* ----------------------- Images ----------------------- */
   function makeImg(src) {
     const img = new Image();
     img.decoding = 'async';
@@ -177,30 +155,20 @@
     return img;
   }
   const ghostImg = makeImg('assets/ghost.png');
-
-  // sleeve assets (exact sizes: body 40x100, cuffs 40x60)
-  const sleeveBodyImg   = makeImg('assets/sleevebody.png');       // 40x100
-  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');    // 40x60 (faces down)
-  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png'); // 40x60 (faces up)
-
-  // orb image
+  const sleeveBodyImg   = makeImg('assets/sleevebody.png');
+  const sleeveCuffTop   = makeImg('assets/sleevecufftop.png');
+  const sleeveCuffBottom= makeImg('assets/sleevecuffbottom.png');
   const orbImg = makeImg('assets/star.png');
-
-  // NEW: dryer asset
   const dryerImg = makeImg('assets/dryer.png');
 
-  let PIPE_W = 40;  // sleeve width (source)
-  let BODY_H = 100; // sleeve body tile height
-  let CUFF_H = 60;  // cuff height
-  let PIPE_SCALE = 0.85; // sleeves a bit smaller
+  let PIPE_W = 40, BODY_H = 100, CUFF_H = 60, PIPE_SCALE = 0.85;
 
-  // Dryer draw/physics scale
-  let DRYER_W = 120;
-  let DRYER_H = 100;
-  let DRYER_SCALE = 0.35;      // ↓ MUCH smaller (was 0.85)
-  let DRYER_HIT_INSET = 0.18;  // fair hitbox
-  const DRYER_MIN_GAP_PX = 260;// spacing helper (still fine)
-  const DRYER_EXTRA_SPEED = 2.2; // ↑ faster push toward player (was 0.8)
+  // Dryer sizing/speed (from your last version)
+  let DRYER_W = 120, DRYER_H = 100;
+  let DRYER_SCALE = 0.35;
+  let DRYER_HIT_INSET = 0.18;
+  const DRYER_MIN_GAP_PX = 260;
+  const DRYER_EXTRA_SPEED = 2.2;
 
   dryerImg.onload = () => {
     if (dryerImg.naturalWidth && dryerImg.naturalHeight){
@@ -208,17 +176,12 @@
       DRYER_H = Math.round(dryerImg.naturalHeight * DRYER_SCALE);
     }
   };
-
   sleeveBodyImg.onload = () => {
-    if (sleeveBodyImg.naturalWidth) {
-      PIPE_W = sleeveBodyImg.naturalWidth;
-      BODY_H = sleeveBodyImg.naturalHeight;
-    }
+    if (sleeveBodyImg.naturalWidth) { PIPE_W = sleeveBodyImg.naturalWidth; BODY_H = sleeveBodyImg.naturalHeight; }
   };
   function syncCuffDims(img){
     if (img && img.naturalWidth) {
-      PIPE_W = img.naturalWidth;
-      CUFF_H = img.naturalHeight;
+      PIPE_W = img.naturalWidth; CUFF_H = img.naturalHeight;
       for (const pp of state.pipes) {
         const cx = pp.x + pp.w/2;
         pp.w = Math.round(PIPE_W * PIPE_SCALE);
@@ -229,11 +192,9 @@
   sleeveCuffTop.onload = () => syncCuffDims(sleeveCuffTop);
   sleeveCuffBottom.onload = () => syncCuffDims(sleeveCuffBottom);
 
-  /* ----------------------- Helpers ----------------------- */
   const rand  = (a,b)=> Math.random()*(b-a)+a;
   const randi = (a,b)=> Math.floor(Math.random()*(b-a+1))+a;
   const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
-
   const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth < 900);
 
   const SETTINGS = {
@@ -251,7 +212,6 @@
     respawnDelayMs: 1000
   };
 
-  /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
@@ -261,15 +221,12 @@
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
     orbs:[], pipes:[],
 
-    // NEW: dryers + section manager
     dryers:[],
-    section: { mode: 'pipes', remaining: randi(5,10) }, // 5–10 pipes, then 5–10 dryers, etc.
+    section: { mode: 'pipes', remaining: randi(5,10) },
 
-    // trail + particles
     trailDots:[],
     particles:[],
 
-    // Trail color progression
     trailBase:'#9aa0a6', trailBlue:'#4ab7ff', trailPurple:'#b06cff', trailGold:'#ff6a00',
 
     startTime:0, elapsed:0, deathPause:false, deathTimer:0
@@ -277,51 +234,34 @@
 
   const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
 
-  /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
-    if (!state.playing && !state.dead){
-      start();
-    } else if (state.dead && !state.deathPause){
-      restart();
-    }
+    if (!state.playing && !state.dead){ start(); }
+    else if (state.dead && !state.deathPause){ restart(); }
   }
   window.addEventListener('keydown', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = true; startIfNeeded();
-    }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) { e.preventDefault(); p.hold = true; startIfNeeded(); }
   }, {passive:false});
   window.addEventListener('keyup', e => {
-    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) {
-      e.preventDefault(); p.hold = false;
-      if (state.dead && !state.deathPause) restart();
-    }
+    if (['Space','ArrowUp','KeyW','Enter'].includes(e.code)) { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }
   }, {passive:false});
   canvas.addEventListener('touchstart', e => { e.preventDefault(); p.hold = true; startIfNeeded(); }, {passive:false});
   canvas.addEventListener('touchend',   e => { e.preventDefault(); p.hold = false; if (state.dead && !state.deathPause) restart(); }, {passive:false});
 
-  /* ----------------------- Obstacles ----------------------- */
-
-  // Pipes (sleeves)
   function addPipe(){
     const h = canvas.clientHeight, margin = 60;
-
     const baseMin = state.minSpawnFrames * (4.2/state.speed);
     const baseMax = state.maxSpawnFrames * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
-
     const timeToNext = state.spawn * (16.67 / 1000);
 
     const mid = h/2;
     const prev = state.lastGapY ?? mid;
     const safeTop = margin + state.gap/2;
     const safeBot = h - margin - state.gap/2;
-
     const allowedDelta = Math.min(SETTINGS.maxSlopePxPerSec * timeToNext, 170);
     let proposed = prev + rand(-allowedDelta, +allowedDelta);
-
     const wobble = rand(-8, 8);
     const gapY = clamp(proposed + wobble, safeTop, safeBot);
-
     const w = Math.round(PIPE_W * PIPE_SCALE);
 
     const isMoving = Math.random() < SETTINGS.movingProb;
@@ -329,8 +269,7 @@
     const amp = isMoving ? Math.min(rand(12, SETTINGS.movingAmpMax), maxAmpByGap) : 0;
 
     state.pipes.push({
-      x: canvas.clientWidth + 40,
-      baseGapY: gapY, w, passed:false,
+      x: canvas.clientWidth + 40, baseGapY: gapY, w, passed:false,
       type: isMoving ? 'moving' : 'normal',
       amp, speed: isMoving ? rand(0.8, 1.2) : 0,
       phase: Math.random()*Math.PI*2,
@@ -345,50 +284,30 @@
     }
   }
 
-  // Dryers (one-at-a-time, different heights, from right -> left)
   function addDryer(){
     const H = canvas.clientHeight;
     const margin = 40;
 
-    // STRICT "only one on screen": if ANY dryer hasn't fully left, defer.
     const anyVisible = state.dryers.some(d => (d.x + d.w) > -40);
-    if (anyVisible){
-      state.spawn = 6; // quick recheck
-      return;
-    }
-
-    // Also defer if the last one is still right-edge-adjacent (belt-and-suspenders)
+    if (anyVisible){ state.spawn = 6; return; }
     const last = state.dryers[state.dryers.length - 1];
-    if (last && last.x > canvas.clientWidth - DRYER_MIN_GAP_PX){
-      state.spawn = 6;
-      return;
-    }
+    if (last && last.x > canvas.clientWidth - DRYER_MIN_GAP_PX){ state.spawn = 6; return; }
 
     const y = clamp(rand(margin, H - margin - DRYER_H), margin, H - margin - DRYER_H);
-
-    // Single-file pacing
     const baseMin = (state.minSpawnFrames * 0.92) * (4.2/state.speed);
     const baseMax = (state.maxSpawnFrames * 0.92) * (4.2/state.speed);
     state.spawn = Math.floor(rand(baseMin, baseMax));
 
     state.dryers.push({
-      x: canvas.clientWidth + 40,   // from right edge
-      y, w: DRYER_W, h: DRYER_H,
-      passed:false,
-      wobbleAmp: 0, wobbleSpeed: 0, wobblePhase: 0
+      x: canvas.clientWidth + 40, y, w: DRYER_W, h: DRYER_H,
+      passed:false, wobbleAmp:0, wobbleSpeed:0, wobblePhase:0
     });
   }
 
-  // Section-driven spawner (pipes ↔ dryers)
   function addObstacle(){
-    if (state.section.mode === 'pipes'){
-      addPipe();
-    } else {
-      addDryer();
-    }
-
-    // Section countdown/switch
-    if (state.spawn !== 6) { // don't count if we deferred dryer spawn
+    if (state.section.mode === 'pipes'){ addPipe(); }
+    else { addDryer(); }
+    if (state.spawn !== 6) {
       state.section.remaining--;
       if (state.section.remaining <= 0){
         state.section.mode = (state.section.mode === 'pipes') ? 'dryers' : 'pipes';
@@ -405,32 +324,25 @@
     return pipe.baseGapY;
   };
 
-  /* ----------------------- Flow ----------------------- */
   function reset(){
-    state.playing=false; state.dead=false;
-    state.deathPause=false; state.deathTimer=0;
+    state.playing=false; state.dead=false; state.deathPause=false; state.deathTimer=0;
     state.score=0;
     state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=0.6;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
     state.dryers.length=0;
-    state.section.mode = 'pipes';
-    state.section.remaining = randi(5,10);
+    state.section.mode = 'pipes'; state.section.remaining = randi(5,10);
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
-
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
   }
   function start(){
     if (state.dead || state.deathPause) return;
-    state.playing=true;
-    state.startTime = performance.now();
-    state.elapsed = 0;
+    state.playing=true; state.startTime = performance.now(); state.elapsed = 0;
     if (msg) msg.style.display = 'none';
   }
   function restart(){ reset(); start(); }
 
-  /* ----------------------- Trail (SIMPLE BURST) ----------------------- */
   function colorForScore(score){
     if (score >= 50) return state.trailGold;
     if (score >= 25) return state.trailPurple;
@@ -456,11 +368,9 @@
       color: colorForScore(state.score),
       life, maxLife: life, seed: Math.random()*1000, lvl
     });
-
     if (state.trailDots.length > 120) state.trailDots.splice(0, state.trailDots.length - 120);
   }
 
-  /* ----------------------- Collisions ----------------------- */
   function hitPipe(pipe){
     const gy = currentGapY(pipe);
     const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
@@ -469,119 +379,62 @@
     }
     return false;
   }
-
-  // AABB hit for dryers (slightly shrunken to be fair)
   function hitDryer(d){
     const insetX = d.w * DRYER_HIT_INSET;
     const insetY = d.h * DRYER_HIT_INSET;
-    const dx1 = d.x + insetX;
-    const dy1 = d.y + insetY;
-    const dx2 = d.x + d.w - insetX;
-    const dy2 = d.y + d.h - insetY;
-
-    const px1 = p.x - p.w*0.35;
-    const py1 = p.y - p.h*0.35;
-    const px2 = p.x + p.w*0.35;
-    const py2 = p.y + p.h*0.35;
-
+    const dx1 = d.x + insetX, dy1 = d.y + insetY;
+    const dx2 = d.x + d.w - insetX, dy2 = d.y + d.h - insetY;
+    const px1 = p.x - p.w*0.35, py1 = p.y - p.h*0.35;
+    const px2 = p.x + p.w*0.35, py2 = p.y + p.h*0.35;
     return !(px2 < dx1 || px1 > dx2 || py2 < dy1 || py1 > dy2);
   }
-
   function hitBounds(){ return (p.y < 0) || (p.y > canvas.clientHeight); }
 
-  /* ----------------------- Explosion ----------------------- */
   function explode(px, py){
     const trail = colorForScore(state.score);
     let skinColor = '#cfe3ff';
-
     for (let i=0;i<28;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.2 + Math.random()*3.2;
-      const life = 24 + Math.random()*18;
-      state.particles.push({
-        type:'spark',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
-        g: 0.08, spin:0,
-        life, maxLife:life,
-        r: 1.6 + Math.random()*2.2,
-        color: (Math.random()<0.6 ? trail : '#9fe9ff')
-      });
+      const ang = Math.random()*Math.PI*2, spd = 2.2 + Math.random()*3.2, life = 24 + Math.random()*18;
+      state.particles.push({ type:'spark', x:px, y:py, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, g:0.08, spin:0, life, maxLife:life, r:1.6 + Math.random()*2.2, color:(Math.random()<0.6 ? trail : '#9fe9ff') });
     }
     for (let i=0;i<16;i++){
-      const ang = Math.random()*Math.PI*2;
-      const spd = 2.0 + Math.random()*3.8;
-      const life = 26 + Math.random()*22;
-      state.particles.push({
-        type:'shard',
-        x:px, y:py,
-        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd - 0.5,
-        g: 0.12, spin: (Math.random()*0.3)*(Math.random()<0.5?1:-1),
-        life, maxLife:life,
-        w: 6 + Math.random()*6, h: 2 + Math.random()*3,
-        rot: Math.random()*Math.PI,
-        color: (Math.random()<0.5 ? skinColor : trail)
-      });
+      const ang = Math.random()*Math.PI*2, spd = 2.0 + Math.random()*3.8, life = 26 + Math.random()*22;
+      state.particles.push({ type:'shard', x:px, y:py, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd - 0.5, g:0.12, spin:(Math.random()*0.3)*(Math.random()<0.5?1:-1), life, maxLife:life, w:6 + Math.random()*6, h:2 + Math.random()*3, rot:Math.random()*Math.PI, color:(Math.random()<0.5 ? skinColor : trail) });
     }
-    state.shake = 10;
-    state.flash = 0.5;
+    state.shake = 10; state.flash = 0.5;
   }
 
-  /* -------- Sleeve rendering (your assets) -------- */
   function drawTopPipeSection(ctx, x, yTop, w, hTop) {
     if (hTop <= 0 || !sleeveBodyImg || !sleeveCuffTop) return;
     ctx.imageSmoothingEnabled = false;
-    const tileW = PIPE_W;
-    x = Math.round(x); yTop = Math.round(yTop);
-
+    const tileW = PIPE_W; x = Math.round(x); yTop = Math.round(yTop);
     const cuffDrawH = Math.min(CUFF_H, hTop);
     const cuffSrcY  = CUFF_H - cuffDrawH;
     const cuffDestY = yTop + hTop - cuffDrawH;
     ctx.drawImage(sleeveCuffTop, 0, cuffSrcY, tileW, cuffDrawH, x, cuffDestY, w, cuffDrawH);
-
-    let remaining = hTop - cuffDrawH;
-    let y = cuffDestY;
+    let remaining = hTop - cuffDrawH, y = cuffDestY;
     while (remaining > 0) {
       const sliceH = Math.min(BODY_H, remaining);
-      ctx.drawImage(
-        sleeveBodyImg,
-        0, BODY_H - sliceH, tileW, sliceH,
-        x, y - sliceH, w, sliceH
-      );
-      y -= sliceH;
-      remaining -= sliceH;
+      ctx.drawImage(sleeveBodyImg, 0, BODY_H - sliceH, tileW, sliceH, x, y - sliceH, w, sliceH);
+      y -= sliceH; remaining -= sliceH;
     }
   }
-
   function drawBottomPipeSection(ctx, x, yBot, w, hBot) {
     if (hBot <= 0 || !sleeveBodyImg || !sleeveCuffBottom) return;
     ctx.imageSmoothingEnabled = false;
-
-    const tileW = PIPE_W;
-    x = Math.round(x); yBot = Math.round(yBot);
-
+    const tileW = PIPE_W; x = Math.round(x); yBot = Math.round(yBot);
     const cuffDrawH = Math.min(CUFF_H, hBot);
     ctx.drawImage(sleeveCuffBottom, 0, 0, tileW, cuffDrawH, x, yBot, w, cuffDrawH);
-
-    let remaining = hBot - cuffDrawH;
-    let y = yBot + cuffDrawH;
+    let remaining = hBot - cuffDrawH, y = yBot + cuffDrawH;
     while (remaining > 0) {
       const sliceH = Math.min(BODY_H, remaining);
-      ctx.drawImage(
-        sleeveBodyImg,
-        0, 0, tileW, sliceH,
-        x, y, w, sliceH
-      );
-      y += sliceH;
-      remaining -= sliceH;
+      ctx.drawImage(sleeveBodyImg, 0, 0, tileW, sliceH, x, y, w, sliceH);
+      y += sliceH; remaining -= sliceH;
     }
   }
 
-  /* ==================== Fixed 60 FPS Update ==================== */
-  const FIXED_DT = 1000/60;     // ~16.6667ms
-  const MAX_STEPS = 5;          // cap to avoid spiral of death
-  let lastTime = performance.now();
-  let accumulator = 0;
+  const FIXED_DT = 1000/60, MAX_STEPS = 5;
+  let lastTime = performance.now(), accumulator = 0;
 
   function tick(dtMs){
     state.t += dtMs;
@@ -589,25 +442,16 @@
 
     if (state.deathPause){
       state.deathTimer -= dtMs;
-
-      for (const d of state.trailDots) { d.life -= step; }
+      for (const d of state.trailDots) d.life -= step;
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
-
       for (const prt of state.particles){
-        prt.vy += (prt.g||0) * step;
-        prt.x  += prt.vx * step;
-        prt.y  += prt.vy * step;
+        prt.vy += (prt.g||0) * step; prt.x += prt.vx * step; prt.y += prt.vy * step;
         if (prt.type==='shard'){ prt.rot = (prt.rot||0) + (prt.spin||0); }
         prt.life -= step;
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
-
       state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
-
-      if (state.deathTimer <= 0){
-        state.deathPause = false;
-        reset();
-      }
+      if (state.deathTimer <= 0){ state.deathPause = false; reset(); }
       return;
     }
 
@@ -621,11 +465,10 @@
     if (state.playing && !state.dead){
       if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
 
-      // Magnet-lite toward orbs
+      // magnet-lite
       for (const o of state.orbs){
         if (o.taken) continue;
-        const dx = p.x - o.x, dy = p.y - o.y;
-        const d2 = dx*dx + dy*dy;
+        const dx = p.x - o.x, dy = p.y - o.y, d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
           const pull = 0.6 * step;
           p.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - p.y) * pull / 100));
@@ -636,26 +479,43 @@
       p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
       p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
-      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
+      p.rot += (p.targetRot - p.rot) * 0.2;
 
-      // Spawning driven by section
       state.spawn -= step;
       if (state.spawn <= 0) addObstacle();
 
-      // Move everything
       for (const pipe of state.pipes) pipe.x -= state.speed * step;
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
+
+      // === DRYERS: move + EMIT FLAME TRAIL ===
       for (const d of state.dryers){
-        d.x -= (state.speed + DRYER_EXTRA_SPEED) * step;  // faster toward player
+        d.x -= (state.speed + DRYER_EXTRA_SPEED) * step;
+
+        // Emit 1–2 warm "flame" particles per frame from the right/rear edge
+        const fx = d.x + d.w * 0.9;         // rear (since moving left)
+        const fy = d.y + d.h * 0.55;        // mid-low
+        const emits = 1 + (Math.random() < 0.35);
+        for (let i=0;i<emits;i++){
+          const life = 12 + Math.random()*12;
+          const palette = ['#ffd770','#ffb347','#ff7b00','#ff3d00']; // warm ramp
+          const color = palette[(Math.random()*palette.length)|0];
+          state.particles.push({
+            type:'flame',
+            x: fx + rand(-2,2), y: fy + rand(-d.h*0.18, d.h*0.18),
+            vx: rand(0.4,1.2), vy: rand(-0.35,0.15),   // drift right, a touch upward
+            g: -0.02,                                   // slight buoyancy
+            life, maxLife: life,
+            r: 2 + Math.random()*2.2,
+            color
+          });
+        }
       }
 
-      // Pipe scoring/collisions
       for (const pipe of state.pipes){
         if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
         if (hitPipe(pipe)) { die(); break; }
       }
 
-      // Dryer scoring/collisions
       if (!state.dead){
         for (const d of state.dryers){
           if (!d.passed && p.x > d.x + d.w){ d.passed = true; state.score++; }
@@ -665,23 +525,20 @@
 
       if (!state.dead && hitBounds()) die();
 
-      // Orb collection
       if (!state.dead){
         for (const o of state.orbs){
           if (!o.taken){
             const dx = p.x - o.x, dy = p.y - o.y;
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
-              o.taken = true;
-              state.score += 2;
+              o.taken = true; state.score += 2;
               for (let i=0;i<12;i++){
                 const life = Math.random()*12+18;
                 state.particles.push({
-                  type:'spark',
-                  x:o.x, y:o.y,
+                  type:'spark', x:o.x, y:o.y,
                   vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
                   vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
-                  g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                  g:0, spin:0, life, maxLife: life,
+                  r: Math.random()*2+1.6, color:'#9fe9ff'
                 });
               }
             }
@@ -689,12 +546,10 @@
         }
       }
 
-      // Cleanup offscreen
       while (state.pipes.length && state.pipes[0].x + state.pipes[0].w < -40) state.pipes.shift();
       while (state.orbs.length && state.orbs[0].x + 20 < -40) state.orbs.shift();
       while (state.dryers.length && state.dryers[0].x + state.dryers[0].w < -40) state.dryers.shift();
 
-      // Trail decay
       for (const d of state.trailDots){
         d.x -= state.speed * step * 0.9;
         d.y += (Math.sin((state.t + d.seed)*0.01) * 0.25);
@@ -702,7 +557,6 @@
       }
       while (state.trailDots.length && state.trailDots[0].life<=0) state.trailDots.shift();
 
-      // explosion particles decay
       for (const prt of state.particles){
         prt.vy += (prt.g||0) * step;
         prt.x  += prt.vx * step;
@@ -718,32 +572,21 @@
 
   function die(){
     if (state.dead || state.deathPause) return;
-    state.dead = true;
-    state.playing = false;
-
+    state.dead = true; state.playing = false;
     state.hi = Math.max(state.hi, state.score);
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
-
     explode(p.x, p.y);
-
-    state.deathPause = true;
-    state.deathTimer = SETTINGS.respawnDelayMs;
-
+    state.deathPause = true; state.deathTimer = SETTINGS.respawnDelayMs;
     if (msg) msg.style.display = 'none';
   }
 
   function draw(){
-    // clear with overscan safety
     ctx.clearRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
-
     const sx = (Math.random()*2-1)*state.shake;
     const sy = (Math.random()*2-1)*state.shake;
 
-    /* ===== Background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
     const tbg = performance.now();
-
-    // Nebula washes
     {
       const g1 = ctx.createRadialGradient(W*0.15 + Math.sin(tbg*0.0002)*40, H*0.2, 0, W*0.15, H*0.2, Math.max(W,H)*0.9);
       g1.addColorStop(0.0, 'rgba(70,110,200,0.10)');
@@ -757,16 +600,12 @@
       g2.addColorStop(1.0, 'rgba(0,0,0,0)');
       ctx.fillStyle = g2; ctx.fillRect(-2,-2,W+4,H+4);
     }
-
-    // FAR layer
     ctx.globalAlpha = 0.08;
     for (let i=0;i<90;i++){
       const x = (i*120 - (tbg*0.020)%120);
       const y = 20 + (i*53) % (H-40);
       ctx.fillStyle="#bfd2ff"; ctx.fillRect(x, y, 2, 2);
     }
-
-    // MID layer
     ctx.globalAlpha = 0.14;
     for (let i=0;i<60;i++){
       const x = (i*200 - (tbg*0.040)%200);
@@ -774,10 +613,8 @@
       ctx.fillStyle="#e7f0ff"; ctx.fillRect(x, y, 3, 3);
     }
 
-    // GOLDEN FLICKERS
     ctx.globalAlpha = 1;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let i=0;i<28;i++){
       const baseX = (i*180 - (tbg*0.050)%180);
       const baseY = 30 + ((i*97) % (H-60));
@@ -785,14 +622,11 @@
       const a  = 0.08 + 0.28*(tw*tw);
       ctx.globalAlpha = a;
       ctx.fillStyle = "#ffd65a";
-      ctx.beginPath();
-      ctx.arc(baseX, baseY + Math.sin(i*3.1 + tbg*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(baseX, baseY + Math.sin(i*3.1 + tbg*0.0012)*1.5, 1.2 + tw*0.9, 0, Math.PI*2); ctx.fill();
       drawGlow(ctx, baseX, baseY, 4 + tw*2.5, 0.12*a + 0.04);
     }
     ctx.restore();
 
-    // Vignette
     ctx.globalAlpha = 0.28;
     const vgTop = ctx.createLinearGradient(0,0,0,H);
     vgTop.addColorStop(0,'rgba(0,0,0,0.45)');
@@ -803,40 +637,30 @@
     ctx.fillStyle = vgTop; ctx.fillRect(-2,-2,W+4,H+4);
     ctx.globalAlpha = 1;
 
-    /* ===== World ===== */
     ctx.save(); ctx.translate(sx, sy);
 
-    // Trail (simple burst)
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    // Player trail dots
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (const d of state.trailDots){
-      const a = Math.max(0, d.life / d.maxLife);
-      if (a <= 0) continue;
-
-      const lvl = d.lvl||0;
-      const lvlScale = 1 + lvl * 0.45;
-      const t = 1 - a;
-      const r = d.w + (d.len - d.w) * t;
-
+      const a = Math.max(0, d.life / d.maxLife); if (a <= 0) continue;
+      const lvl = d.lvl||0, lvlScale = 1 + lvl * 0.45;
+      const t = 1 - a, r = d.w + (d.len - d.w) * t;
       ctx.globalAlpha = 0.22 * a * lvlScale;
       ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, Math.PI*2); ctx.fillStyle = d.color; ctx.fill();
-
       ctx.globalAlpha = 0.35 * a * lvlScale;
       ctx.beginPath(); ctx.arc(d.x, d.y, r*0.45, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
-
       drawGlow(ctx, d.x, d.y, d.glow * (0.7 + 0.5*a) * (1 + lvl*0.45), (0.18*a + 0.06) * lvlScale);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
 
-    /* ----- Draw sleeves (pipes) ----- */
+    // Sleeves
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
       const x = pipe.x, w = pipe.w;
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
-
       if (sleeveBodyImg.complete && sleeveCuffTop.complete && sleeveCuffBottom.complete &&
           !sleeveBodyImg._error && !sleeveCuffTop._error && !sleeveCuffBottom._error) {
         drawTopPipeSection(ctx, x, yTop, w, hTop);
@@ -851,11 +675,10 @@
       }
     }
 
-    /* ----- Draw dryers (from right → left, single-file) ----- */
+    // Dryers
     for (const d of state.dryers){
       if (dryerImg && dryerImg.complete && !dryerImg._error){
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(dryerImg, Math.round(d.x), Math.round(d.y), d.w, d.h);
       } else {
         ctx.fillStyle = "#444";
@@ -865,11 +688,10 @@
       }
     }
 
-    // Orbs (unchanged)
+    // Orbs
     const lvl = (state.score>=50?3:state.score>=25?2:state.score>=10?1:0);
     const orbBase = [36, 42, 48, 58][lvl];
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
-
     for (const o of state.orbs) {
       if (o.taken) continue;
       const pulse = 1 + 0.06 * Math.sin(state.t / 360 + o.x * 0.01);
@@ -879,49 +701,57 @@
       grd.addColorStop(1, 'rgba(119,234,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath(); ctx.arc(o.x, o.y, glowRadius, 0, Math.PI * 2); ctx.fill();
-
       if (orbImg && orbImg.complete && !orbImg._error) {
         const drawSize = orbBase * pulse * 0.85;
-        ctx.save();
-        ctx.translate(o.x, o.y);
+        ctx.save(); ctx.translate(o.x, o.y);
         ctx.rotate(Math.sin(state.t / 500 + o.x * 0.03) * 0.15);
         ctx.drawImage(orbImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
         ctx.restore();
       } else {
         ctx.beginPath();
         ctx.arc(o.x, o.y, o.r * pulse * (1 + lvl*0.2), 0, Math.PI * 2);
-        ctx.fillStyle = "#77eaff";
-        ctx.fill();
-        ctx.strokeStyle = "#c8f3ff";
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.fillStyle = "#77eaff"; ctx.fill();
+        ctx.strokeStyle = "#c8f3ff"; ctx.lineWidth = 2; ctx.stroke();
       }
     }
 
-    // Explosion particles
+    // Particles (explosion + orb sparks + NEW dryer flames)
     for (const prt of state.particles){
       const a = prt.maxLife ? Math.max(0, prt.life / prt.maxLife) : 0;
       if (a <= 0) continue;
 
-      if (prt.type === 'shard'){
-        ctx.globalAlpha = a;
-        ctx.fillStyle = prt.color;
-        ctx.save();
-        ctx.translate(prt.x, prt.y);
-        ctx.rotate(prt.rot||0);
+      if (prt.type === 'flame'){
+        // Soft radial flame puff + faint streak to the right
+        const radius = prt.r * (1 + (1 - a) * 0.9);
+        const grd = ctx.createRadialGradient(prt.x, prt.y, 0, prt.x, prt.y, radius);
+        grd.addColorStop(0, `rgba(255,255,255,${0.45*a})`);
+        grd.addColorStop(0.5, prt.color.replace('#','rgba(')  // convert hex-ish → quick warm fallback
+          || `rgba(255,125,0,${0.6*a})`);
+        // Fallback for the line above if replace trick doesn't make sense:
+        grd.addColorStop(0.5, `rgba(255,125,0,${0.6*a})`);
+        grd.addColorStop(1, `rgba(255,125,0,0)`);
+        ctx.fillStyle = grd;
+        ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(prt.x, prt.y, radius, 0, Math.PI*2); ctx.fill();
+
+        // subtle streak
+        ctx.globalAlpha = 0.18 * a;
+        ctx.fillStyle = prt.color || '#ff7b00';
+        ctx.fillRect(prt.x - radius*0.6, prt.y - 1, radius*0.9, 2);
+        ctx.globalAlpha = 1;
+      } else if (prt.type === 'shard'){
+        ctx.globalAlpha = a; ctx.fillStyle = prt.color;
+        ctx.save(); ctx.translate(prt.x, prt.y); ctx.rotate(prt.rot||0);
         ctx.fillRect(-(prt.w||6)/2, -(prt.h||3)/2, prt.w||6, prt.h||3);
         ctx.restore();
-      } else {
-        ctx.globalAlpha = a;
-        ctx.fillStyle = prt.color;
-        ctx.beginPath();
-        ctx.arc(prt.x, prt.y, (prt.r||2), 0, Math.PI*2);
-        ctx.fill();
+      } else { // spark
+        ctx.globalAlpha = a; ctx.fillStyle = prt.color;
+        ctx.beginPath(); ctx.arc(prt.x, prt.y, (prt.r||2), 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
       }
     }
 
-    // Player (ghost)
+    // Player
     if (!state.dead && !state.deathPause){
       ctx.save();
       const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
@@ -930,16 +760,12 @@
       const sz = 54;
       const sAmt = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
       ctx.scale(1 + sAmt, 1 - sAmt);
-
       drawGlow(ctx, 0, 0, sz * 0.78, 0.95);
-
       if (ghostImg && !ghostImg._error){
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(ghostImg, -sz/2, -sz/2, sz, sz);
       } else {
-        ctx.fillStyle = '#9fc2ff';
-        ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#9fc2ff'; ctx.beginPath(); ctx.arc(0,0, sz*0.45, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
@@ -956,18 +782,10 @@
 
   function loop(now){
     const frameTime = Math.min(100, now - lastTime);
-    lastTime = now;
-    accumulator += frameTime;
-
+    lastTime = now; accumulator += frameTime;
     let steps = 0;
-    while (accumulator >= FIXED_DT && steps < MAX_STEPS){
-      tick(FIXED_DT);
-      accumulator -= FIXED_DT;
-      steps++;
-    }
-
-    draw();
-    requestAnimationFrame(loop);
+    while (accumulator >= FIXED_DT && steps < MAX_STEPS){ tick(FIXED_DT); accumulator -= FIXED_DT; steps++; }
+    draw(); requestAnimationFrame(loop);
   }
 
   reset();
