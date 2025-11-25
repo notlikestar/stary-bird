@@ -156,7 +156,6 @@
         osc.frequency.value = 400;
         osc.type = 'sine';
         gain.gain.setValueAtTime(0.08, ctx.currentTime);
-        gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.001, ctx.currentTime + 0.1);
         gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.08);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.08);
@@ -355,14 +354,16 @@
     doubleProb: 0.00,            // ← remove double sleeves
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000
+    respawnDelayMs: 1000,
+    thrust: 0.55,                // Thrust power for smoother feel
+    flapCooldownMs: 80           // Cooldown between flap sounds
   };
 
   /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
-    gravity: GRAVITY, thrust:0.55, maxVy:8.5,  // Slightly tuned for smoother feel
+    gravity: GRAVITY, thrust: SETTINGS.thrust, maxVy:8.5,  // Slightly tuned for smoother feel
     speed: SETTINGS.speedBase, gap:150,
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
@@ -497,7 +498,7 @@
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
     state.score=0; state.lastScore=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=0.55;
+    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=SETTINGS.thrust;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
@@ -732,7 +733,7 @@
         // Play flap sound with cooldown
         if (p.flapCooldown <= 0) {
           AudioManager.playFlap();
-          p.flapCooldown = 80; // 80ms cooldown
+          p.flapCooldown = SETTINGS.flapCooldownMs;
         }
       }
 
