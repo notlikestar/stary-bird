@@ -44,29 +44,42 @@
     position:absolute;
     right:calc(12px + env(safe-area-inset-right));
     top:  calc(12px + env(safe-area-inset-top));
-    background:rgba(255,255,255,.08);
-    padding:6px 10px; border-radius:10px;
+    background:rgba(255,255,255,.10);
+    padding:6px 12px; border-radius:12px;
     font-weight:800; letter-spacing:.06em; z-index:3;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.15s ease-out, background 0.2s ease;
+  }
+  .hud:active {
+    transform: scale(0.95);
   }
   .controls{
     position:absolute;
     left:calc(12px + env(safe-area-inset-left));
     top: calc(12px + env(safe-area-inset-top));
-    opacity:.6; font-weight:700; color:#c9d8ff; z-index:2;
+    opacity:.5; font-weight:700; color:#c9d8ff; z-index:2;
+    transition: opacity 0.3s ease;
   }
   .center{ position:absolute; inset:0; display:grid; place-items:center;
            pointer-events:none; font-weight:900; letter-spacing:.08em;
-           color:#9fb7ff99; text-align:center; padding:0 10px; z-index:1; }
+           color:#9fb7ffaa; text-align:center; padding:0 10px; z-index:1;
+           animation: pulse 2s ease-in-out infinite; }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.02); }
+  }
 
   /* Toast */
   .toast{
     position:fixed; left:50%; top:12px; transform:translateX(-50%);
     background:#2a1620; color:#ffd5dc; border:1px solid #572238;
-    padding:8px 12px; border-radius:10px; font-weight:700; letter-spacing:.02em;
+    padding:8px 14px; border-radius:12px; font-weight:700; letter-spacing:.02em;
     box-shadow:0 12px 24px rgba(0,0,0,.4);
-    z-index:9999; opacity:0; transition:opacity .15s ease;
+    z-index:9999; opacity:0; transition:opacity .2s ease, transform 0.2s ease;
   }
-  .toast.show{ opacity:1; }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(4px); }
 </style>
 </head>
 <body>
@@ -85,7 +98,113 @@
   'use strict';
 
   /* ======= SINGLE SOURCE OF TRUTH FOR GRAVITY ======= */
-  const GRAVITY = 0.33; // ← tweak this (lower = floatier, higher = heavier)
+  const GRAVITY = 0.30; // ← slightly floatier for smoother feel
+
+  /* ======= INTERPOLATION ALPHA FOR SMOOTH RENDERING ======= */
+  let interpAlpha = 0;
+
+  /* ===== AUDIO MANAGER ===== */
+  const AudioManager = {
+    bgMusic: null,
+    orbSound: null,
+    muted: false,
+    initialized: false,
+    
+    init() {
+      if (this.initialized) return;
+      this.initialized = true;
+      
+      // Background music
+      this.bgMusic = new Audio('assets/bgmusic.mp3');
+      this.bgMusic.loop = true;
+      this.bgMusic.volume = 0.3;
+      
+      // Orb collection sound
+      this.orbSound = new Audio('assets/orbsound.mp3');
+      this.orbSound.volume = 0.5;
+    },
+    
+    playBgMusic() {
+      if (this.muted || !this.bgMusic) return;
+      this.bgMusic.play().catch(() => {});
+    },
+    
+    stopBgMusic() {
+      if (this.bgMusic) {
+        this.bgMusic.pause();
+        this.bgMusic.currentTime = 0;
+      }
+    },
+    
+    playOrb() {
+      if (this.muted || !this.orbSound) return;
+      // Clone for overlapping sounds
+      const sound = this.orbSound.cloneNode();
+      sound.volume = 0.5;
+      sound.play().catch(() => {});
+    },
+    
+    playFlap() {
+      // Subtle audio feedback for flapping (synthesized)
+      if (this.muted) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 400;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.08);
+      } catch(e) {}
+    },
+    
+    playDeath() {
+      // Death sound effect (synthesized explosion)
+      if (this.muted) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const noise = ctx.createBufferSource();
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2);
+        }
+        noise.buffer = buffer;
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 800;
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+        noise.start(ctx.currentTime);
+      } catch(e) {}
+    },
+    
+    playScore() {
+      // Score sound
+      if (this.muted) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 800;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.1);
+      } catch(e) {}
+    }
+  };
 
   /* ===== MOBILE-SAFE GLOW ===== */
   function makeGlowSprite(size = 256, tint = [170, 200, 255]) {
@@ -235,14 +354,16 @@
     doubleProb: 0.00,            // ← remove double sleeves
     doubleSpacing: 130,
     movingAmpMax: 24,
-    respawnDelayMs: 1000
+    respawnDelayMs: 1000,
+    thrust: 0.55,                // Thrust power for smoother feel
+    flapCooldownMs: 80           // Cooldown between flap sounds
   };
 
   /* ----------------------- Game State ----------------------- */
   const state = {
     playing:false, dead:false, score:0, hi:Number(localStorage.getItem('stary_bird_hi')||0),
     t:0, shake:0, flash:0,
-    gravity: GRAVITY, thrust:0.6, maxVy:9,
+    gravity: GRAVITY, thrust: SETTINGS.thrust, maxVy:8.5,  // Slightly tuned for smoother feel
     speed: SETTINGS.speedBase, gap:150,
     spawn:0, minSpawnFrames:110, maxSpawnFrames:170,
     maxSlopePxPerFrame:2.4, lastGapY:null, lastPipeX:null,
@@ -263,13 +384,28 @@
     startTime:0,
     elapsed:0,
     deathPause:false,
-    deathTimer:0
+    deathTimer:0,
+    
+    // For smooth interpolation
+    lastScore: 0
   };
 
-  const p = { x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60 };
+  // Player state with previous position for interpolation
+  const p = { 
+    x:180, y:canvas.clientHeight/2, vy:0, rot:0, targetRot:0, hold:false, w:60, h:60,
+    // Previous state for interpolation
+    prevX: 180, prevY: canvas.clientHeight/2, prevRot: 0,
+    // Visual smoothing
+    visualY: canvas.clientHeight/2, visualRot: 0,
+    // Flap cooldown for audio
+    flapCooldown: 0
+  };
 
   /* ----------------------- Input ----------------------- */
   function startIfNeeded(){
+    // Initialize audio on first user interaction
+    AudioManager.init();
+    
     if (!state.playing && !state.dead){
       start();
     } else if (state.dead && !state.deathPause){
@@ -361,12 +497,15 @@
   function reset(){
     state.playing=false; state.dead=false;
     state.deathPause=false; state.deathTimer=0;
-    state.score=0;
-    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=0.6;
+    state.score=0; state.lastScore=0;
+    state.speed=SETTINGS.speedBase; state.gap=150; state.gravity=GRAVITY; state.thrust=SETTINGS.thrust;
     state.pipes.length=0; state.orbs.length=0; state.particles.length=0; state.trailDots.length=0;
     state.spawn=30; state.t=0; state.elapsed=0; state.shake=0; state.flash=0;
     state.lastGapY = canvas.clientHeight/2; state.lastPipeX = canvas.clientWidth;
     p.x=180; p.y=canvas.clientHeight/2; p.vy=0; p.rot=0; p.targetRot=0; p.hold=false;
+    p.prevX=180; p.prevY=canvas.clientHeight/2; p.prevRot=0;
+    p.visualY=canvas.clientHeight/2; p.visualRot=0;
+    p.flapCooldown=0;
 
     if (msg) { msg.textContent = 'TAP / SPACE TO START'; msg.style.display=''; }
     updateUI();
@@ -377,6 +516,7 @@
     state.startTime = performance.now();
     state.elapsed = 0;
     if (msg) msg.style.display = 'none';
+    AudioManager.playBgMusic();
     updateUI();
   }
   function restart(){ reset(); start(); }
@@ -534,6 +674,22 @@
     state.t += dtMs;
     const step = dtMs / 16.67;
 
+    // Store previous positions for interpolation
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.prevRot = p.rot;
+    
+    // Store previous pipe positions
+    for (const pipe of state.pipes) {
+      pipe.prevX = pipe.x;
+    }
+    for (const orb of state.orbs) {
+      orb.prevX = orb.x;
+    }
+    
+    // Decay flap cooldown
+    if (p.flapCooldown > 0) p.flapCooldown -= dtMs;
+
     if (state.deathPause){
       state.deathTimer -= dtMs;
 
@@ -550,7 +706,7 @@
       }
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
 
-      state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
+      state.shake *= 0.92; state.flash = Math.max(0, state.flash - 0.05);
 
       if (state.deathTimer <= 0){
         state.deathPause = false;
@@ -567,7 +723,19 @@
     }
 
     if (state.playing && !state.dead){
-      if (p.hold){ p.vy -= state.thrust * step; addTrail(); }
+      // Improved thrust with audio feedback
+      if (p.hold){ 
+        // Apply thrust with slight easing for smoother feel
+        const thrustMultiplier = p.vy > 0 ? 1.1 : 1.0; // Slightly stronger when falling
+        p.vy -= state.thrust * step * thrustMultiplier;
+        addTrail(); 
+        
+        // Play flap sound with cooldown
+        if (p.flapCooldown <= 0) {
+          AudioManager.playFlap();
+          p.flapCooldown = SETTINGS.flapCooldownMs;
+        }
+      }
 
       // Magnet-lite toward orbs
       for (const o of state.orbs){
@@ -575,16 +743,24 @@
         const dx = p.x - o.x, dy = p.y - o.y;
         const d2 = dx*dx + dy*dy;
         if (d2 < 100*100){
-          const pull = 0.6 * step;
-          p.vy += Math.max(-0.8*step, Math.min(0.8*step, (o.y - p.y) * pull / 100));
+          const pull = 0.5 * step;
+          p.vy += Math.max(-0.6*step, Math.min(0.6*step, (o.y - p.y) * pull / 100));
         }
       }
 
+      // Smoother gravity application with slight air resistance at high speeds
+      const airResistance = Math.abs(p.vy) > 6 ? 0.98 : 1.0;
+      p.vy *= airResistance;
       p.vy += state.gravity * step;
-      p.vy = Math.max(-9, Math.min(state.maxVy, p.vy));
+      p.vy = Math.max(-8.5, Math.min(state.maxVy, p.vy));
       p.y  += p.vy * step;
-      p.targetRot = Math.max(-0.8, Math.min(0.8, (-0.6) + ((p.vy+9)/18) * (0.8 - (-0.6))));
-      p.rot = p.rot + (p.targetRot - p.rot) * 0.2;
+      
+      // Smoother rotation with better response curve
+      const rotRange = 1.4; // Total rotation range
+      const normalizedVy = (p.vy + 8.5) / 17; // 0 to 1
+      p.targetRot = -0.7 + normalizedVy * rotRange;
+      p.targetRot = Math.max(-0.7, Math.min(0.7, p.targetRot));
+      p.rot = p.rot + (p.targetRot - p.rot) * 0.15; // Slightly slower rotation for smoothness
 
       state.spawn -= step;
       if (state.spawn <= 0) addPipe();
@@ -592,7 +768,15 @@
       for (const orb of state.orbs)  orb.x  -= state.speed * step;
 
       for (const pipe of state.pipes){
-        if (!pipe.passed && p.x > pipe.x + pipe.w){ pipe.passed = true; state.score++; }
+        if (!pipe.passed && p.x > pipe.x + pipe.w){ 
+          pipe.passed = true; 
+          state.score++;
+          // Play score sound
+          if (state.score !== state.lastScore) {
+            AudioManager.playScore();
+            state.lastScore = state.score;
+          }
+        }
         if (hitPipe(pipe)) { die(); break; }
       }
       if (!state.dead && hitBounds()) die();
@@ -604,17 +788,28 @@
             if (dx*dx + dy*dy < (o.r + 16)*(o.r + 16)){
               o.taken = true;
               state.score += 2;
-              for (let i=0;i<12;i++){
-                const life = Math.random()*12+18;
+              state.lastScore = state.score;
+              
+              // Play orb collection sound
+              AudioManager.playOrb();
+              
+              // More satisfying particle burst
+              for (let i=0;i<16;i++){
+                const life = Math.random()*14+20;
+                const angle = i/16*2*Math.PI;
+                const speed = 1.8 + Math.random()*2.5;
                 state.particles.push({
                   type:'spark',
                   x:o.x, y:o.y,
-                  vx: Math.cos(i/12*2*Math.PI)*Math.random()*2.2,
-                  vy: Math.sin(i/12*2*Math.PI)*Math.random()*2.2,
+                  vx: Math.cos(angle)*speed,
+                  vy: Math.sin(angle)*speed,
                   g:0, spin:0,
-                  life, maxLife: life, r: Math.random()*2+1.6, color:'#9fe9ff'
+                  life, maxLife: life, r: Math.random()*2.5+1.8, color:'#9fe9ff'
                 });
               }
+              
+              // Small screen shake for feedback
+              state.shake = Math.max(state.shake, 2);
             }
           }
         }
@@ -642,7 +837,9 @@
       while (state.particles.length && state.particles[0].life<=0) state.particles.shift();
     }
 
-    state.shake *= 0.9; state.flash = Math.max(0, state.flash - 0.06);
+    // Smoother shake decay
+    state.shake *= 0.88; 
+    state.flash = Math.max(0, state.flash - 0.04);
   }
 
   function die(){
@@ -654,6 +851,10 @@
     try { localStorage.setItem('stary_bird_hi', String(state.hi)); } catch(e){}
 
     explode(p.x, p.y);
+    
+    // Play death sound
+    AudioManager.playDeath();
+    AudioManager.stopBgMusic();
 
     state.deathPause = true;
     state.deathTimer = SETTINGS.respawnDelayMs;
@@ -665,8 +866,10 @@
     // clear with overscan safety (cover any subpixel transforms)
     ctx.clearRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
 
-    const sx = (Math.random()*2-1)*state.shake;
-    const sy = (Math.random()*2-1)*state.shake;
+    // Smoother shake using interpolation
+    const shakeIntensity = state.shake * 0.8;
+    const sx = (Math.sin(state.t * 0.5) * 2 - 1) * shakeIntensity;
+    const sy = (Math.cos(state.t * 0.7) * 2 - 1) * shakeIntensity;
 
     /* ===== Depthy background with golden flickers ===== */
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -768,11 +971,14 @@
     }
     ctx.restore();
 
-    // Draw sleeves
+    // Draw sleeves with interpolation for smoothness
     for (const pipe of state.pipes){
       const gy = currentGapY(pipe);
       const half = ((pipe.doubleGap ? (state.gap - 6) : state.gap) / 2);
-      const x = pipe.x, w = pipe.w;
+      // Interpolate pipe position for smoother movement
+      const prevX = pipe.prevX !== undefined ? pipe.prevX : pipe.x;
+      const x = prevX + (pipe.x - prevX) * interpAlpha;
+      const w = pipe.w;
       const yTop = 0, hTop = gy - half;
       const yBot = gy + half, hBot = canvas.clientHeight - yBot;
 
@@ -790,7 +996,7 @@
       }
     }
 
-    // Orbs (pulse scales with progression level too)
+    // Orbs (pulse scales with progression level too) with interpolation
     const lvl = progressionLevel(state.score);
     const orbBase = [36, 42, 48, 58][lvl];   // bigger with progression
     const orbGlow = [0.22, 0.28, 0.34, 0.42][lvl];
@@ -798,27 +1004,31 @@
     for (const o of state.orbs) {
       if (o.taken) continue;
 
-      const pulse = 1 + 0.06 * Math.sin(state.t / 360 + o.x * 0.01);
+      // Interpolate orb position
+      const prevX = o.prevX !== undefined ? o.prevX : o.x;
+      const orbX = prevX + (o.x - prevX) * interpAlpha;
+
+      const pulse = 1 + 0.08 * Math.sin(state.t / 300 + orbX * 0.01);
 
       const glowRadius = o.r * 6 * pulse * (1 + lvl*0.15);
-      const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, glowRadius);
+      const grd = ctx.createRadialGradient(orbX, o.y, 0, orbX, o.y, glowRadius);
       grd.addColorStop(0, `rgba(119,234,255,${orbGlow})`);
       grd.addColorStop(1, 'rgba(119,234,255,0)');
       ctx.fillStyle = grd;
       ctx.beginPath();
-      ctx.arc(o.x, o.y, glowRadius, 0, Math.PI * 2);
+      ctx.arc(orbX, o.y, glowRadius, 0, Math.PI * 2);
       ctx.fill();
 
       if (orbImg && orbImg.complete && !orbImg._error) {
         const drawSize = orbBase * pulse * 0.85;
         ctx.save();
-        ctx.translate(o.x, o.y);
-        ctx.rotate(Math.sin(state.t / 500 + o.x * 0.03) * 0.15);
+        ctx.translate(orbX, o.y);
+        ctx.rotate(Math.sin(state.t / 400 + orbX * 0.03) * 0.18);
         ctx.drawImage(orbImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
         ctx.restore();
       } else {
         ctx.beginPath();
-        ctx.arc(o.x, o.y, o.r * pulse * (1 + lvl*0.2), 0, Math.PI * 2);
+        ctx.arc(orbX, o.y, o.r * pulse * (1 + lvl*0.2), 0, Math.PI * 2);
         ctx.fillStyle = "#77eaff";
         ctx.fill();
         ctx.strokeStyle = "#c8f3ff";
@@ -851,17 +1061,24 @@
       }
     }
 
-    // Player (ghost)
+    // Player (ghost) with interpolation for buttery smooth movement
     if (!state.dead && !state.deathPause){
       ctx.save();
-      const idleOffset = (!state.playing) ? Math.sin(state.t * 0.005) * 8 : 0;
-      ctx.translate(p.x, p.y + idleOffset);
-      ctx.rotate(p.rot);
+      
+      // Interpolate player position and rotation
+      const interpY = p.prevY + (p.y - p.prevY) * interpAlpha;
+      const interpRot = p.prevRot + (p.rot - p.prevRot) * interpAlpha;
+      
+      const idleOffset = (!state.playing) ? Math.sin(state.t * 0.004) * 10 : 0;
+      ctx.translate(p.x, interpY + idleOffset);
+      ctx.rotate(interpRot);
       const sz = 54;
-      const sAmt = Math.min(0.18, Math.max(0, Math.abs(p.vy)/12 * 0.15));
+      
+      // Smoother squash and stretch based on velocity
+      const sAmt = Math.min(0.15, Math.max(0, Math.abs(p.vy)/14 * 0.12));
       ctx.scale(1 + sAmt, 1 - sAmt);
 
-      drawGlow(ctx, 0, 0, sz * 0.78, 0.95);
+      drawGlow(ctx, 0, 0, sz * 0.82, 0.92);
 
       if (ghostImg && !ghostImg._error){
         ctx.imageSmoothingEnabled = true;
@@ -877,10 +1094,11 @@
     ctx.restore();
 
     if (state.flash>0){
-      ctx.fillStyle = `rgba(255,255,255,${state.flash*0.6})`;
+      ctx.fillStyle = `rgba(255,255,255,${state.flash*0.5})`;
       ctx.fillRect(-2,-2,canvas.clientWidth+4, canvas.clientHeight+4);
     }
 
+    // Animated score display
     hud.textContent = `${state.score} • HI ${state.hi}`;
   }
 
@@ -896,12 +1114,15 @@
       steps++;
     }
 
+    // Calculate interpolation alpha for smooth rendering between physics steps
+    interpAlpha = Math.min(1, accumulator / FIXED_DT);
+
     draw();
     requestAnimationFrame(loop);
   }
 
   reset();
-  requestAnimationFrame(t => { lastTime = t; accumulator = 0; requestAnimationFrame(loop); });
+  requestAnimationFrame(t => { lastTime = t; accumulator = 0; interpAlpha = 0; requestAnimationFrame(loop); });
 })();
 </script>
 </body>
